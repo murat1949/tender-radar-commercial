@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
   <title>Tender Radar KZ Commercial</title>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -43,6 +44,48 @@
       padding: 24px;
       margin-bottom: 24px;
       box-shadow: 0 3px 12px rgba(0,0,0,.08);
+    }
+
+    .login-card {
+      max-width: 440px;
+      margin: 50px auto;
+    }
+
+    .login-card input {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 12px;
+      margin: 7px 0;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      font-size: 16px;
+    }
+
+    button {
+      border: 0;
+      border-radius: 8px;
+      padding: 11px 18px;
+      font-size: 15px;
+      cursor: pointer;
+    }
+
+    .primary {
+      width: 100%;
+      margin-top: 10px;
+      background: #0f172a;
+      color: white;
+    }
+
+    .logout {
+      background: #e2e8f0;
+      color: #1f2937;
+    }
+
+    .top-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 15px;
     }
 
     .stats {
@@ -86,6 +129,14 @@
       margin-bottom: 20px;
     }
 
+    .info {
+      color: #1d4ed8;
+      background: #dbeafe;
+      padding: 15px;
+      border-radius: 10px;
+      margin-bottom: 20px;
+    }
+
     .tender {
       border-top: 1px solid #e5e7eb;
       padding: 15px 0;
@@ -97,9 +148,18 @@
       padding: 30px;
     }
 
+    #cabinet {
+      display: none;
+    }
+
     @media(max-width:800px){
       .stats {
         grid-template-columns: repeat(2,1fr);
+      }
+
+      .top-row {
+        align-items: flex-start;
+        flex-direction: column;
       }
     }
   </style>
@@ -109,240 +169,603 @@
 
 <header>
   <h1>Tender Radar KZ Commercial</h1>
-  <p>Кабинет клиента — данные из Supabase</p>
+  <p>Персональный кабинет клиента</p>
 </header>
 
 <div class="container">
 
-  <div id="error"></div>
+  <div id="message"></div>
 
-  <div class="card">
-    <h2 id="clientName">Загрузка...</h2>
-    <p><strong>Тариф:</strong> <span id="tariff">—</span></p>
-    <p><strong>Статус:</strong> <span id="clientStatus">—</span></p>
-    <p><strong>Telegram:</strong> <span id="telegram">—</span></p>
+  <!-- ВХОД -->
+  <div id="loginBlock" class="card login-card">
+    <h2>Вход в кабинет</h2>
+
+    <p>Введите email и пароль клиента.</p>
+
+    <input
+      id="email"
+      type="email"
+      placeholder="Email"
+      autocomplete="username"
+    >
+
+    <input
+      id="password"
+      type="password"
+      placeholder="Пароль"
+      autocomplete="current-password"
+    >
+
+    <button
+      class="primary"
+      onclick="login()"
+    >
+      Войти
+    </button>
   </div>
 
-  <div class="stats">
-    <div class="stat">
-      Новых тендеров
-      <div class="value" id="newCount">0</div>
+
+  <!-- КАБИНЕТ -->
+  <div id="cabinet">
+
+    <div class="card">
+      <div class="top-row">
+        <div>
+          <h2 id="clientName">Загрузка...</h2>
+
+          <p>
+            <strong>Тариф:</strong>
+            <span id="tariff">—</span>
+          </p>
+
+          <p>
+            <strong>Статус:</strong>
+            <span id="clientStatus">—</span>
+          </p>
+
+          <p>
+            <strong>Telegram:</strong>
+            <span id="telegram">—</span>
+          </p>
+
+          <p>
+            <strong>Пользователь:</strong>
+            <span id="userEmail">—</span>
+          </p>
+        </div>
+
+        <button
+          class="logout"
+          onclick="logout()"
+        >
+          Выйти
+        </button>
+      </div>
     </div>
 
-    <div class="stat">
-      Найдено всего
-      <div class="value" id="totalCount">0</div>
+
+    <div class="stats">
+
+      <div class="stat">
+        Новых тендеров
+        <div class="value" id="newCount">0</div>
+      </div>
+
+      <div class="stat">
+        Найдено всего
+        <div class="value" id="totalCount">0</div>
+      </div>
+
+      <div class="stat">
+        Активных профилей
+        <div class="value" id="profileCount">0</div>
+      </div>
+
+      <div class="stat">
+        Telegram
+        <div class="value" id="telegramStatus">—</div>
+      </div>
+
     </div>
 
-    <div class="stat">
-      Активных профилей
-      <div class="value" id="profileCount">0</div>
+
+    <div class="card">
+
+      <h2>Профиль поиска</h2>
+
+      <p>
+        <strong>Название:</strong>
+        <span id="profileName">—</span>
+      </p>
+
+      <p><strong>Ищем:</strong></p>
+      <div id="includeKeywords"></div>
+
+      <p><strong>Исключаем:</strong></p>
+      <div id="excludeKeywords"></div>
+
     </div>
 
-    <div class="stat">
-      Telegram
-      <div class="value" id="telegramStatus">—</div>
+
+    <div class="card">
+
+      <h2>Последние тендеры</h2>
+
+      <div id="tenders">
+        Загрузка...
+      </div>
+
     </div>
-  </div>
 
-  <div class="card">
-    <h2>Профиль поиска</h2>
-
-    <p><strong>Название:</strong>
-      <span id="profileName">—</span>
-    </p>
-
-    <p><strong>Ищем:</strong></p>
-    <div id="includeKeywords"></div>
-
-    <p><strong>Исключаем:</strong></p>
-    <div id="excludeKeywords"></div>
-  </div>
-
-  <div class="card">
-    <h2>Последние тендеры</h2>
-    <div id="tenders">Загрузка...</div>
   </div>
 
 </div>
 
 <footer>
-  Tender Radar KZ Commercial — Client Cabinet MVP
+  Tender Radar KZ Commercial — Client Cabinet
 </footer>
 
+
 <script>
+
 const SUPABASE_URL =
   "https://ilfxyvsqintvjbifqxvr.supabase.co";
 
 const SUPABASE_KEY =
   "sb_publishable_GEl1zhHAxT_i8zU2F86cOA_-G6n7uBH";
 
-const db = supabase
-  .createClient(SUPABASE_URL, SUPABASE_KEY)
-  .schema("commercial");
+const sb =
+  supabase.createClient(
+    SUPABASE_URL,
+    SUPABASE_KEY
+  );
 
-const CLIENT_ID = 3;
+const db =
+  sb.schema("commercial");
+
 
 function showError(text) {
-  document.getElementById("error").innerHTML =
+
+  document.getElementById("message").innerHTML =
     '<div class="error">' + text + '</div>';
+
 }
 
+
+function showInfo(text) {
+
+  document.getElementById("message").innerHTML =
+    '<div class="info">' + text + '</div>';
+
+}
+
+
+function clearMessage() {
+
+  document.getElementById("message").innerHTML = "";
+
+}
+
+
 function tags(elementId, values) {
-  const el = document.getElementById(elementId);
+
+  const el =
+    document.getElementById(elementId);
+
   el.innerHTML = "";
 
   (values || []).forEach(v => {
-    const span = document.createElement("span");
+
+    const span =
+      document.createElement("span");
+
     span.className = "tag";
     span.textContent = v;
+
     el.appendChild(span);
+
   });
+
 }
 
-async function loadCabinet() {
+
+async function login() {
+
+  clearMessage();
+
+  const email =
+    document.getElementById("email")
+      .value
+      .trim();
+
+  const password =
+    document.getElementById("password")
+      .value;
+
+  if (!email || !password) {
+
+    showError(
+      "Введите email и пароль."
+    );
+
+    return;
+  }
+
+  showInfo("Выполняется вход...");
+
+  const {
+    data,
+    error
+  } =
+    await sb.auth.signInWithPassword({
+      email,
+      password
+    });
+
+  if (error) {
+
+    showError(
+      "Ошибка входа: " +
+      error.message
+    );
+
+    return;
+  }
+
+  clearMessage();
+
+  await openCabinet(
+    data.user
+  );
+
+}
+
+
+async function logout() {
+
+  await sb.auth.signOut();
+
+  document.getElementById("cabinet")
+    .style.display = "none";
+
+  document.getElementById("loginBlock")
+    .style.display = "block";
+
+  document.getElementById("password")
+    .value = "";
+
+  showInfo(
+    "Вы вышли из кабинета."
+  );
+
+}
+
+
+async function openCabinet(user) {
 
   try {
 
+    showInfo(
+      "Загружаем кабинет..."
+    );
+
+    // Ищем client_id текущего пользователя
+    const {
+      data: link,
+      error: linkError
+    } =
+      await db
+        .from("client_users")
+        .select("client_id, full_name, email")
+        .eq("auth_user_id", user.id)
+        .eq("active", true)
+        .single();
+
+    if (linkError) {
+      throw linkError;
+    }
+
+    const CLIENT_ID =
+      link.client_id;
+
+    document.getElementById("userEmail")
+      .textContent =
+      user.email || link.email || "—";
+
+
     // КЛИЕНТ
-    const { data: client, error: clientError } =
+    const {
+      data: client,
+      error: clientError
+    } =
       await db
         .from("clients")
         .select("*")
         .eq("id", CLIENT_ID)
         .single();
 
-    if (clientError) throw clientError;
+    if (clientError) {
+      throw clientError;
+    }
 
-    document.getElementById("clientName").textContent =
-      client.name;
 
-    document.getElementById("tariff").textContent =
+    document.getElementById("clientName")
+      .textContent =
+      client.name || link.full_name || "Клиент";
+
+
+    document.getElementById("tariff")
+      .textContent =
       client.tariff || "—";
 
-    document.getElementById("clientStatus").innerHTML =
+
+    document.getElementById("clientStatus")
+      .innerHTML =
       '<span class="status">' +
       (client.status || "—") +
       '</span>';
 
 
-    // ПРОФИЛЬ
-    const { data: profiles, error: profileError } =
+    // ПРОФИЛИ
+    const {
+      data: profiles,
+      error: profileError
+    } =
       await db
         .from("profiles")
         .select("*")
         .eq("client_id", CLIENT_ID);
 
-    if (profileError) throw profileError;
+    if (profileError) {
+      throw profileError;
+    }
 
-    document.getElementById("profileCount").textContent =
+
+    document.getElementById("profileCount")
+      .textContent =
       profiles.length;
 
+
     if (profiles.length) {
-      const p = profiles[0];
 
-      document.getElementById("profileName").textContent =
-        p.name;
+      const p =
+        profiles[0];
 
-      tags("includeKeywords", p.include_keywords);
-      tags("excludeKeywords", p.exclude_keywords);
+      document.getElementById("profileName")
+        .textContent =
+        p.name || "—";
+
+      tags(
+        "includeKeywords",
+        p.include_keywords
+      );
+
+      tags(
+        "excludeKeywords",
+        p.exclude_keywords
+      );
+
+    } else {
+
+      document.getElementById("profileName")
+        .textContent = "—";
+
+      tags(
+        "includeKeywords",
+        []
+      );
+
+      tags(
+        "excludeKeywords",
+        []
+      );
+
     }
 
 
     // TELEGRAM
-    const { data: telegrams, error: telegramError } =
+    const {
+      data: telegrams,
+      error: telegramError
+    } =
       await db
         .from("telegram_destinations")
         .select("*")
         .eq("client_id", CLIENT_ID)
         .eq("active", true);
 
-    if (telegramError) throw telegramError;
+    if (telegramError) {
+      throw telegramError;
+    }
+
 
     if (telegrams.length) {
-      document.getElementById("telegram").textContent =
-        telegrams[0].label || "Подключён";
 
-      document.getElementById("telegramStatus").textContent =
+      document.getElementById("telegram")
+        .textContent =
+        telegrams[0].label ||
+        "Подключён";
+
+      document.getElementById("telegramStatus")
+        .textContent =
         "ON";
+
     } else {
-      document.getElementById("telegram").textContent =
+
+      document.getElementById("telegram")
+        .textContent =
         "Не подключён";
 
-      document.getElementById("telegramStatus").textContent =
+      document.getElementById("telegramStatus")
+        .textContent =
         "OFF";
+
     }
 
 
     // MATCHES
-    const { data: matches, error: matchesError } =
+    const {
+      data: matches,
+      error: matchesError
+    } =
       await db
         .from("client_tender_matches")
         .select("*")
         .eq("client_id", CLIENT_ID)
-        .order("matched_at", { ascending: false });
+        .order(
+          "matched_at",
+          { ascending: false }
+        );
 
-    if (matchesError) throw matchesError;
+    if (matchesError) {
+      throw matchesError;
+    }
 
-    document.getElementById("totalCount").textContent =
+
+    document.getElementById("totalCount")
+      .textContent =
       matches.length;
 
-    document.getElementById("newCount").textContent =
-      matches.filter(x => x.status === "new").length;
+
+    document.getElementById("newCount")
+      .textContent =
+      matches.filter(
+        x => x.status === "new"
+      ).length;
 
 
-    // ПОСЛЕДНИЕ ТЕНДЕРЫ
+    // ТЕНДЕРЫ
     const tenderBox =
       document.getElementById("tenders");
 
     tenderBox.innerHTML = "";
 
+
     if (!matches.length) {
-      tenderBox.textContent = "Тендеров пока нет.";
-      return;
+
+      tenderBox.textContent =
+        "Тендеров пока нет.";
+
+    } else {
+
+      for (
+        const match
+        of matches.slice(0,10)
+      ) {
+
+        const {
+          data: tender,
+          error: tenderError
+        } =
+          await db
+            .from("tenders")
+            .select("*")
+            .eq(
+              "id",
+              match.tender_id
+            )
+            .single();
+
+
+        if (tenderError || !tender) {
+          continue;
+        }
+
+
+        const div =
+          document.createElement("div");
+
+        div.className =
+          "tender";
+
+
+        div.innerHTML = `
+          <strong>
+            ${tender.title || "Без названия"}
+          </strong>
+
+          <p>
+            Источник:
+            ${tender.source_code || "—"}
+          </p>
+
+          <p>
+            Лот:
+            ${tender.source_lot_id || "—"}
+          </p>
+
+          <p>
+            Совпадение:
+            ${
+              (match.matched_keywords || [])
+              .join(", ") || "—"
+            }
+          </p>
+
+          <span class="status">
+            ${match.status || "—"}
+          </span>
+        `;
+
+
+        tenderBox.appendChild(div);
+
+      }
+
     }
 
-    for (const match of matches.slice(0,10)) {
 
-      const { data: tender } =
-        await db
-          .from("tenders")
-          .select("*")
-          .eq("id", match.tender_id)
-          .single();
+    document.getElementById("loginBlock")
+      .style.display =
+      "none";
 
-      if (!tender) continue;
 
-      const div = document.createElement("div");
-      div.className = "tender";
+    document.getElementById("cabinet")
+      .style.display =
+      "block";
 
-      div.innerHTML = `
-        <strong>${tender.title || "Без названия"}</strong>
-        <p>Источник: ${tender.source_code || "—"}</p>
-        <p>Лот: ${tender.source_lot_id || "—"}</p>
-        <p>Совпадение:
-          ${(match.matched_keywords || []).join(", ") || "—"}
-        </p>
-        <span class="status">
-          ${match.status || "—"}
-        </span>
-      `;
 
-      tenderBox.appendChild(div);
-    }
+    clearMessage();
+
 
   } catch(err) {
 
     console.error(err);
 
     showError(
-      "Не удалось получить данные из Supabase: " +
+      "Не удалось открыть кабинет: " +
       (err.message || err)
     );
+
   }
+
 }
 
-loadCabinet();
+
+// Проверяем существующую сессию
+async function init() {
+
+  const {
+    data: { session }
+  } =
+    await sb.auth.getSession();
+
+
+  if (
+    session &&
+    session.user
+  ) {
+
+    await openCabinet(
+      session.user
+    );
+
+  }
+
+}
+
+init();
+
 </script>
 
 </body>
