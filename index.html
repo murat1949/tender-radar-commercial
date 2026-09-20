@@ -4,6 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Tender Radar KZ Commercial</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
   <style>
     body {
       margin: 0;
@@ -34,21 +37,17 @@
       padding: 0 20px;
     }
 
-    .client-card {
+    .card {
       background: white;
       border-radius: 14px;
       padding: 24px;
       margin-bottom: 24px;
-      box-shadow: 0 3px 12px rgba(0,0,0,0.08);
-    }
-
-    .client-card h2 {
-      margin-top: 0;
+      box-shadow: 0 3px 12px rgba(0,0,0,.08);
     }
 
     .stats {
       display: grid;
-      grid-template-columns: repeat(4, 1fr);
+      grid-template-columns: repeat(4,1fr);
       gap: 16px;
       margin-bottom: 24px;
     }
@@ -57,21 +56,13 @@
       background: white;
       border-radius: 14px;
       padding: 20px;
-      box-shadow: 0 3px 12px rgba(0,0,0,0.08);
+      box-shadow: 0 3px 12px rgba(0,0,0,.08);
     }
 
-    .stat .value {
+    .value {
       font-size: 30px;
       font-weight: bold;
       margin-top: 8px;
-    }
-
-    .section {
-      background: white;
-      border-radius: 14px;
-      padding: 24px;
-      margin-bottom: 24px;
-      box-shadow: 0 3px 12px rgba(0,0,0,0.08);
     }
 
     .tag {
@@ -82,18 +73,22 @@
       border-radius: 20px;
     }
 
-    .tender {
-      border-top: 1px solid #e5e7eb;
-      padding: 16px 0;
-    }
-
-    .tender:first-child {
-      border-top: none;
-    }
-
     .status {
       color: #15803d;
       font-weight: bold;
+    }
+
+    .error {
+      color: #b91c1c;
+      background: #fee2e2;
+      padding: 15px;
+      border-radius: 10px;
+      margin-bottom: 20px;
+    }
+
+    .tender {
+      border-top: 1px solid #e5e7eb;
+      padding: 15px 0;
     }
 
     footer {
@@ -102,9 +97,9 @@
       padding: 30px;
     }
 
-    @media (max-width: 800px) {
+    @media(max-width:800px){
       .stats {
-        grid-template-columns: repeat(2, 1fr);
+        grid-template-columns: repeat(2,1fr);
       }
     }
   </style>
@@ -114,68 +109,59 @@
 
 <header>
   <h1>Tender Radar KZ Commercial</h1>
-  <p>Кабинет клиента</p>
+  <p>Кабинет клиента — данные из Supabase</p>
 </header>
 
 <div class="container">
 
-  <div class="client-card">
-    <h2>DEMO 03 — Компьютеры и ноутбуки</h2>
-    <p><strong>Тариф:</strong> Pilot</p>
-    <p><strong>Статус:</strong> <span class="status">Активен</span></p>
-    <p><strong>Telegram:</strong> Tender Radar DEMO 03</p>
+  <div id="error"></div>
+
+  <div class="card">
+    <h2 id="clientName">Загрузка...</h2>
+    <p><strong>Тариф:</strong> <span id="tariff">—</span></p>
+    <p><strong>Статус:</strong> <span id="clientStatus">—</span></p>
+    <p><strong>Telegram:</strong> <span id="telegram">—</span></p>
   </div>
 
   <div class="stats">
     <div class="stat">
       Новых тендеров
-      <div class="value">1</div>
+      <div class="value" id="newCount">0</div>
     </div>
 
     <div class="stat">
-      Найдено сегодня
-      <div class="value">1</div>
+      Найдено всего
+      <div class="value" id="totalCount">0</div>
     </div>
 
     <div class="stat">
       Активных профилей
-      <div class="value">1</div>
+      <div class="value" id="profileCount">0</div>
     </div>
 
     <div class="stat">
-      Уведомлений
-      <div class="value">1</div>
+      Telegram
+      <div class="value" id="telegramStatus">—</div>
     </div>
   </div>
 
-  <div class="section">
+  <div class="card">
     <h2>Профиль поиска</h2>
 
-    <p><strong>Название:</strong> Компьютеры и ноутбуки</p>
+    <p><strong>Название:</strong>
+      <span id="profileName">—</span>
+    </p>
 
     <p><strong>Ищем:</strong></p>
-    <span class="tag">ноутбук</span>
-    <span class="tag">ноутбуки</span>
-    <span class="tag">компьютер</span>
-    <span class="tag">компьютеры</span>
-    <span class="tag">моноблок</span>
+    <div id="includeKeywords"></div>
 
     <p><strong>Исключаем:</strong></p>
-    <span class="tag">ремонт</span>
-    <span class="tag">обслуживание</span>
-    <span class="tag">заправка</span>
+    <div id="excludeKeywords"></div>
   </div>
 
-  <div class="section">
+  <div class="card">
     <h2>Последние тендеры</h2>
-
-    <div class="tender">
-      <strong>Тестовая закупка: ноутбуки для офиса</strong>
-      <p>Источник: demo</p>
-      <p>Лот: DEMO-03-001</p>
-      <p>Совпадение: ноутбук</p>
-      <span class="status">Новый</span>
-    </div>
+    <div id="tenders">Загрузка...</div>
   </div>
 
 </div>
@@ -183,6 +169,181 @@
 <footer>
   Tender Radar KZ Commercial — Client Cabinet MVP
 </footer>
+
+<script>
+const SUPABASE_URL =
+  "https://ilfxyvsqintvjbifqxvr.supabase.co";
+
+const SUPABASE_KEY =
+  "sb_publishable_GEl1zhHAxT_i8zU2F86cOA_-G6n7uBH";
+
+const db = supabase
+  .createClient(SUPABASE_URL, SUPABASE_KEY)
+  .schema("commercial");
+
+const CLIENT_ID = 3;
+
+function showError(text) {
+  document.getElementById("error").innerHTML =
+    '<div class="error">' + text + '</div>';
+}
+
+function tags(elementId, values) {
+  const el = document.getElementById(elementId);
+  el.innerHTML = "";
+
+  (values || []).forEach(v => {
+    const span = document.createElement("span");
+    span.className = "tag";
+    span.textContent = v;
+    el.appendChild(span);
+  });
+}
+
+async function loadCabinet() {
+
+  try {
+
+    // КЛИЕНТ
+    const { data: client, error: clientError } =
+      await db
+        .from("clients")
+        .select("*")
+        .eq("id", CLIENT_ID)
+        .single();
+
+    if (clientError) throw clientError;
+
+    document.getElementById("clientName").textContent =
+      client.name;
+
+    document.getElementById("tariff").textContent =
+      client.tariff || "—";
+
+    document.getElementById("clientStatus").innerHTML =
+      '<span class="status">' +
+      (client.status || "—") +
+      '</span>';
+
+
+    // ПРОФИЛЬ
+    const { data: profiles, error: profileError } =
+      await db
+        .from("profiles")
+        .select("*")
+        .eq("client_id", CLIENT_ID);
+
+    if (profileError) throw profileError;
+
+    document.getElementById("profileCount").textContent =
+      profiles.length;
+
+    if (profiles.length) {
+      const p = profiles[0];
+
+      document.getElementById("profileName").textContent =
+        p.name;
+
+      tags("includeKeywords", p.include_keywords);
+      tags("excludeKeywords", p.exclude_keywords);
+    }
+
+
+    // TELEGRAM
+    const { data: telegrams, error: telegramError } =
+      await db
+        .from("telegram_destinations")
+        .select("*")
+        .eq("client_id", CLIENT_ID)
+        .eq("active", true);
+
+    if (telegramError) throw telegramError;
+
+    if (telegrams.length) {
+      document.getElementById("telegram").textContent =
+        telegrams[0].label || "Подключён";
+
+      document.getElementById("telegramStatus").textContent =
+        "ON";
+    } else {
+      document.getElementById("telegram").textContent =
+        "Не подключён";
+
+      document.getElementById("telegramStatus").textContent =
+        "OFF";
+    }
+
+
+    // MATCHES
+    const { data: matches, error: matchesError } =
+      await db
+        .from("client_tender_matches")
+        .select("*")
+        .eq("client_id", CLIENT_ID)
+        .order("matched_at", { ascending: false });
+
+    if (matchesError) throw matchesError;
+
+    document.getElementById("totalCount").textContent =
+      matches.length;
+
+    document.getElementById("newCount").textContent =
+      matches.filter(x => x.status === "new").length;
+
+
+    // ПОСЛЕДНИЕ ТЕНДЕРЫ
+    const tenderBox =
+      document.getElementById("tenders");
+
+    tenderBox.innerHTML = "";
+
+    if (!matches.length) {
+      tenderBox.textContent = "Тендеров пока нет.";
+      return;
+    }
+
+    for (const match of matches.slice(0,10)) {
+
+      const { data: tender } =
+        await db
+          .from("tenders")
+          .select("*")
+          .eq("id", match.tender_id)
+          .single();
+
+      if (!tender) continue;
+
+      const div = document.createElement("div");
+      div.className = "tender";
+
+      div.innerHTML = `
+        <strong>${tender.title || "Без названия"}</strong>
+        <p>Источник: ${tender.source_code || "—"}</p>
+        <p>Лот: ${tender.source_lot_id || "—"}</p>
+        <p>Совпадение:
+          ${(match.matched_keywords || []).join(", ") || "—"}
+        </p>
+        <span class="status">
+          ${match.status || "—"}
+        </span>
+      `;
+
+      tenderBox.appendChild(div);
+    }
+
+  } catch(err) {
+
+    console.error(err);
+
+    showError(
+      "Не удалось получить данные из Supabase: " +
+      (err.message || err)
+    );
+  }
+}
+
+loadCabinet();
+</script>
 
 </body>
 </html>
