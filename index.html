@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tender Radar KZ Commercial</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #f4f6f8;
+      color: #1f2937;
+    }
+
+    header {
+      background: #0f172a;
+      color: white;
+      padding: 20px 30px;
+    }
+
+    header h1 {
+      margin: 0;
+      font-size: 26px;
+    }
+
+    header p {
+      margin: 6px 0 0;
+      color: #cbd5e1;
+    }
+
+    .container {
+      max-width: 1100px;
+      margin: 30px auto;
+      padding: 0 20px;
+    }
+
+    .client-card {
+      background: white;
+      border-radius: 14px;
+      padding: 24px;
+      margin-bottom: 24px;
+      box-shadow: 0 3px 12px rgba(0,0,0,0.08);
+    }
+
+    .client-card h2 {
+      margin-top: 0;
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .stat {
+      background: white;
+      border-radius: 14px;
+      padding: 20px;
+      box-shadow: 0 3px 12px rgba(0,0,0,0.08);
+    }
+
+    .stat .value {
+      font-size: 30px;
+      font-weight: bold;
+      margin-top: 8px;
+    }
+
+    .section {
+      background: white;
+      border-radius: 14px;
+      padding: 24px;
+      margin-bottom: 24px;
+      box-shadow: 0 3px 12px rgba(0,0,0,0.08);
+    }
+
+    .tag {
+      display: inline-block;
+      background: #e2e8f0;
+      padding: 7px 12px;
+      margin: 4px;
+      border-radius: 20px;
+    }
+
+    .tender {
+      border-top: 1px solid #e5e7eb;
+      padding: 16px 0;
+    }
+
+    .tender:first-child {
+      border-top: none;
+    }
+
+    .status {
+      color: #15803d;
+      font-weight: bold;
+    }
+
+    footer {
+      text-align: center;
+      color: #64748b;
+      padding: 30px;
+    }
+
+    @media (max-width: 800px) {
+      .stats {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+<header>
+  <h1>Tender Radar KZ Commercial</h1>
+  <p>Кабинет клиента</p>
+</header>
+
+<div class="container">
+
+  <div class="client-card">
+    <h2>DEMO 03 — Компьютеры и ноутбуки</h2>
+    <p><strong>Тариф:</strong> Pilot</p>
+    <p><strong>Статус:</strong> <span class="status">Активен</span></p>
+    <p><strong>Telegram:</strong> Tender Radar DEMO 03</p>
+  </div>
+
+  <div class="stats">
+    <div class="stat">
+      Новых тендеров
+      <div class="value">1</div>
+    </div>
+
+    <div class="stat">
+      Найдено сегодня
+      <div class="value">1</div>
+    </div>
+
+    <div class="stat">
+      Активных профилей
+      <div class="value">1</div>
+    </div>
+
+    <div class="stat">
+      Уведомлений
+      <div class="value">1</div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Профиль поиска</h2>
+
+    <p><strong>Название:</strong> Компьютеры и ноутбуки</p>
+
+    <p><strong>Ищем:</strong></p>
+    <span class="tag">ноутбук</span>
+    <span class="tag">ноутбуки</span>
+    <span class="tag">компьютер</span>
+    <span class="tag">компьютеры</span>
+    <span class="tag">моноблок</span>
+
+    <p><strong>Исключаем:</strong></p>
+    <span class="tag">ремонт</span>
+    <span class="tag">обслуживание</span>
+    <span class="tag">заправка</span>
+  </div>
+
+  <div class="section">
+    <h2>Последние тендеры</h2>
+
+    <div class="tender">
+      <strong>Тестовая закупка: ноутбуки для офиса</strong>
+      <p>Источник: demo</p>
+      <p>Лот: DEMO-03-001</p>
+      <p>Совпадение: ноутбук</p>
+      <span class="status">Новый</span>
+    </div>
+  </div>
+
+</div>
+
+<footer>
+  Tender Radar KZ Commercial — Client Cabinet MVP
+</footer>
+
+</body>
+</html>
