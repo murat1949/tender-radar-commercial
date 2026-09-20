@@ -51,14 +51,21 @@
       margin: 50px auto;
     }
 
-    .login-card input {
+    input,
+    textarea {
       width: 100%;
       box-sizing: border-box;
       padding: 12px;
-      margin: 7px 0;
+      margin: 7px 0 15px;
       border: 1px solid #cbd5e1;
       border-radius: 8px;
-      font-size: 16px;
+      font-size: 15px;
+      font-family: Arial, sans-serif;
+    }
+
+    textarea {
+      min-height: 90px;
+      resize: vertical;
     }
 
     button {
@@ -70,22 +77,37 @@
     }
 
     .primary {
-      width: 100%;
-      margin-top: 10px;
       background: #0f172a;
       color: white;
     }
 
-    .logout {
+    .login-button {
+      width: 100%;
+      margin-top: 10px;
+    }
+
+    .secondary {
       background: #e2e8f0;
       color: #1f2937;
+    }
+
+    .success-button {
+      background: #15803d;
+      color: white;
     }
 
     .top-row {
       display: flex;
       justify-content: space-between;
-      align-items: center;
+      align-items: flex-start;
       gap: 15px;
+    }
+
+    .button-row {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 18px;
     }
 
     .stats {
@@ -137,9 +159,37 @@
       margin-bottom: 20px;
     }
 
+    .success-message {
+      color: #166534;
+      background: #dcfce7;
+      padding: 15px;
+      border-radius: 10px;
+      margin-bottom: 20px;
+    }
+
     .tender {
       border-top: 1px solid #e5e7eb;
       padding: 15px 0;
+    }
+
+    .edit-box {
+      display: none;
+      margin-top: 20px;
+      padding-top: 20px;
+      border-top: 1px solid #e5e7eb;
+    }
+
+    .edit-box label {
+      display: block;
+      font-weight: bold;
+      margin-top: 5px;
+    }
+
+    .hint {
+      font-size: 13px;
+      color: #64748b;
+      margin-top: -8px;
+      margin-bottom: 8px;
     }
 
     footer {
@@ -152,13 +202,12 @@
       display: none;
     }
 
-    @media(max-width:800px){
+    @media(max-width:800px) {
       .stats {
         grid-template-columns: repeat(2,1fr);
       }
 
       .top-row {
-        align-items: flex-start;
         flex-direction: column;
       }
     }
@@ -178,6 +227,7 @@
 
   <!-- ВХОД -->
   <div id="loginBlock" class="card login-card">
+
     <h2>Вход в кабинет</h2>
 
     <p>Введите email и пароль клиента.</p>
@@ -197,11 +247,12 @@
     >
 
     <button
-      class="primary"
+      class="primary login-button"
       onclick="login()"
     >
       Войти
     </button>
+
   </div>
 
 
@@ -209,9 +260,14 @@
   <div id="cabinet">
 
     <div class="card">
+
       <div class="top-row">
+
         <div>
-          <h2 id="clientName">Загрузка...</h2>
+
+          <h2 id="clientName">
+            Загрузка...
+          </h2>
 
           <p>
             <strong>Тариф:</strong>
@@ -232,15 +288,18 @@
             <strong>Пользователь:</strong>
             <span id="userEmail">—</span>
           </p>
+
         </div>
 
         <button
-          class="logout"
+          class="secondary"
           onclick="logout()"
         >
           Выйти
         </button>
+
       </div>
+
     </div>
 
 
@@ -269,27 +328,123 @@
     </div>
 
 
+    <!-- ПРОФИЛЬ ПОИСКА -->
     <div class="card">
 
-      <h2>Профиль поиска</h2>
+      <div class="top-row">
 
-      <p>
-        <strong>Название:</strong>
-        <span id="profileName">—</span>
-      </p>
+        <h2>
+          Профиль поиска
+        </h2>
 
-      <p><strong>Ищем:</strong></p>
-      <div id="includeKeywords"></div>
+        <button
+          id="editProfileButton"
+          class="secondary"
+          onclick="toggleProfileEdit()"
+        >
+          Редактировать профиль
+        </button>
 
-      <p><strong>Исключаем:</strong></p>
-      <div id="excludeKeywords"></div>
+      </div>
+
+      <div id="profileView">
+
+        <p>
+          <strong>Название:</strong>
+          <span id="profileName">—</span>
+        </p>
+
+        <p>
+          <strong>Ищем:</strong>
+        </p>
+
+        <div id="includeKeywords"></div>
+
+        <p>
+          <strong>Исключаем:</strong>
+        </p>
+
+        <div id="excludeKeywords"></div>
+
+      </div>
+
+
+      <!-- РЕДАКТИРОВАНИЕ -->
+      <div
+        id="profileEdit"
+        class="edit-box"
+      >
+
+        <h3>
+          Редактирование профиля
+        </h3>
+
+        <label>
+          Название профиля
+        </label>
+
+        <input
+          id="editProfileName"
+          type="text"
+        >
+
+
+        <label>
+          Ключевые слова
+        </label>
+
+        <textarea
+          id="editIncludeKeywords"
+        ></textarea>
+
+        <div class="hint">
+          Слова вводите через запятую.
+          Например: ноутбук, ноутбуки, компьютер
+        </div>
+
+
+        <label>
+          Исключения
+        </label>
+
+        <textarea
+          id="editExcludeKeywords"
+        ></textarea>
+
+        <div class="hint">
+          Например: ремонт, обслуживание, заправка
+        </div>
+
+
+        <div class="button-row">
+
+          <button
+            class="success-button"
+            onclick="saveProfile()"
+          >
+            Сохранить
+          </button>
+
+          <button
+            class="secondary"
+            onclick="cancelProfileEdit()"
+          >
+            Отмена
+          </button>
+
+        </div>
+
+      </div>
 
     </div>
 
 
+    <!-- ТЕНДЕРЫ -->
     <div class="card">
 
-      <h2>Последние тендеры</h2>
+      <h2>
+        Последние тендеры
+      </h2>
 
       <div id="tenders">
         Загрузка...
@@ -300,6 +455,7 @@
   </div>
 
 </div>
+
 
 <footer>
   Tender Radar KZ Commercial — Client Cabinet
@@ -324,10 +480,17 @@ const db =
   sb.schema("commercial");
 
 
+let currentClientId = null;
+let currentProfileId = null;
+let currentProfile = null;
+
+
 function showError(text) {
 
   document.getElementById("message").innerHTML =
-    '<div class="error">' + text + '</div>';
+    '<div class="error">' +
+    text +
+    '</div>';
 
 }
 
@@ -335,7 +498,19 @@ function showError(text) {
 function showInfo(text) {
 
   document.getElementById("message").innerHTML =
-    '<div class="info">' + text + '</div>';
+    '<div class="info">' +
+    text +
+    '</div>';
+
+}
+
+
+function showSuccess(text) {
+
+  document.getElementById("message").innerHTML =
+    '<div class="success-message">' +
+    text +
+    '</div>';
 
 }
 
@@ -360,6 +535,7 @@ function tags(elementId, values) {
       document.createElement("span");
 
     span.className = "tag";
+
     span.textContent = v;
 
     el.appendChild(span);
@@ -369,17 +545,29 @@ function tags(elementId, values) {
 }
 
 
+function textToArray(text) {
+
+  return text
+    .split(",")
+    .map(x => x.trim())
+    .filter(x => x.length > 0);
+
+}
+
+
 async function login() {
 
   clearMessage();
 
   const email =
-    document.getElementById("email")
+    document
+      .getElementById("email")
       .value
       .trim();
 
   const password =
-    document.getElementById("password")
+    document
+      .getElementById("password")
       .value;
 
   if (!email || !password) {
@@ -391,7 +579,11 @@ async function login() {
     return;
   }
 
-  showInfo("Выполняется вход...");
+
+  showInfo(
+    "Выполняется вход..."
+  );
+
 
   const {
     data,
@@ -402,6 +594,7 @@ async function login() {
       password
     });
 
+
   if (error) {
 
     showError(
@@ -411,6 +604,7 @@ async function login() {
 
     return;
   }
+
 
   clearMessage();
 
@@ -425,17 +619,211 @@ async function logout() {
 
   await sb.auth.signOut();
 
-  document.getElementById("cabinet")
-    .style.display = "none";
+  currentClientId = null;
+  currentProfileId = null;
+  currentProfile = null;
 
-  document.getElementById("loginBlock")
-    .style.display = "block";
+  document
+    .getElementById("cabinet")
+    .style.display =
+    "none";
 
-  document.getElementById("password")
-    .value = "";
+  document
+    .getElementById("loginBlock")
+    .style.display =
+    "block";
+
+  document
+    .getElementById("password")
+    .value =
+    "";
 
   showInfo(
     "Вы вышли из кабинета."
+  );
+
+}
+
+
+function toggleProfileEdit() {
+
+  if (!currentProfile) {
+
+    showError(
+      "Профиль поиска не найден."
+    );
+
+    return;
+  }
+
+
+  document
+    .getElementById("editProfileName")
+    .value =
+    currentProfile.name || "";
+
+
+  document
+    .getElementById("editIncludeKeywords")
+    .value =
+    (currentProfile.include_keywords || [])
+      .join(", ");
+
+
+  document
+    .getElementById("editExcludeKeywords")
+    .value =
+    (currentProfile.exclude_keywords || [])
+      .join(", ");
+
+
+  document
+    .getElementById("profileEdit")
+    .style.display =
+    "block";
+
+
+  document
+    .getElementById("editProfileButton")
+    .style.display =
+    "none";
+
+}
+
+
+function cancelProfileEdit() {
+
+  document
+    .getElementById("profileEdit")
+    .style.display =
+    "none";
+
+  document
+    .getElementById("editProfileButton")
+    .style.display =
+    "inline-block";
+
+}
+
+
+async function saveProfile() {
+
+  clearMessage();
+
+  if (!currentProfileId) {
+
+    showError(
+      "Не удалось определить профиль."
+    );
+
+    return;
+  }
+
+
+  const name =
+    document
+      .getElementById("editProfileName")
+      .value
+      .trim();
+
+
+  const includeKeywords =
+    textToArray(
+      document
+        .getElementById("editIncludeKeywords")
+        .value
+    );
+
+
+  const excludeKeywords =
+    textToArray(
+      document
+        .getElementById("editExcludeKeywords")
+        .value
+    );
+
+
+  if (!name) {
+
+    showError(
+      "Введите название профиля."
+    );
+
+    return;
+  }
+
+
+  if (!includeKeywords.length) {
+
+    showError(
+      "Добавьте хотя бы одно ключевое слово."
+    );
+
+    return;
+  }
+
+
+  showInfo(
+    "Сохраняем профиль..."
+  );
+
+
+  const {
+    data,
+    error
+  } =
+    await db
+      .from("profiles")
+      .update({
+        name: name,
+        include_keywords: includeKeywords,
+        exclude_keywords: excludeKeywords
+      })
+      .eq(
+        "id",
+        currentProfileId
+      )
+      .select()
+      .single();
+
+
+  if (error) {
+
+    showError(
+      "Ошибка сохранения: " +
+      error.message
+    );
+
+    return;
+  }
+
+
+  currentProfile = data;
+
+
+  document
+    .getElementById("profileName")
+    .textContent =
+    data.name || "—";
+
+
+  tags(
+    "includeKeywords",
+    data.include_keywords
+  );
+
+
+  tags(
+    "excludeKeywords",
+    data.exclude_keywords
+  );
+
+
+  cancelProfileEdit();
+
+
+  showSuccess(
+    "Профиль поиска сохранён."
   );
 
 }
@@ -449,28 +837,42 @@ async function openCabinet(user) {
       "Загружаем кабинет..."
     );
 
-    // Ищем client_id текущего пользователя
+
     const {
       data: link,
       error: linkError
     } =
       await db
         .from("client_users")
-        .select("client_id, full_name, email")
-        .eq("auth_user_id", user.id)
-        .eq("active", true)
+        .select(
+          "client_id, full_name, email"
+        )
+        .eq(
+          "auth_user_id",
+          user.id
+        )
+        .eq(
+          "active",
+          true
+        )
         .single();
+
 
     if (linkError) {
       throw linkError;
     }
 
-    const CLIENT_ID =
+
+    currentClientId =
       link.client_id;
 
-    document.getElementById("userEmail")
+
+    document
+      .getElementById("userEmail")
       .textContent =
-      user.email || link.email || "—";
+      user.email ||
+      link.email ||
+      "—";
 
 
     // КЛИЕНТ
@@ -481,25 +883,35 @@ async function openCabinet(user) {
       await db
         .from("clients")
         .select("*")
-        .eq("id", CLIENT_ID)
+        .eq(
+          "id",
+          currentClientId
+        )
         .single();
+
 
     if (clientError) {
       throw clientError;
     }
 
 
-    document.getElementById("clientName")
+    document
+      .getElementById("clientName")
       .textContent =
-      client.name || link.full_name || "Клиент";
+      client.name ||
+      link.full_name ||
+      "Клиент";
 
 
-    document.getElementById("tariff")
+    document
+      .getElementById("tariff")
       .textContent =
-      client.tariff || "—";
+      client.tariff ||
+      "—";
 
 
-    document.getElementById("clientStatus")
+    document
+      .getElementById("clientStatus")
       .innerHTML =
       '<span class="status">' +
       (client.status || "—") +
@@ -514,51 +926,84 @@ async function openCabinet(user) {
       await db
         .from("profiles")
         .select("*")
-        .eq("client_id", CLIENT_ID);
+        .eq(
+          "client_id",
+          currentClientId
+        );
+
 
     if (profileError) {
       throw profileError;
     }
 
 
-    document.getElementById("profileCount")
+    document
+      .getElementById("profileCount")
       .textContent =
       profiles.length;
 
 
     if (profiles.length) {
 
-      const p =
+      currentProfile =
         profiles[0];
 
-      document.getElementById("profileName")
+      currentProfileId =
+        currentProfile.id;
+
+
+      document
+        .getElementById("profileName")
         .textContent =
-        p.name || "—";
+        currentProfile.name ||
+        "—";
+
 
       tags(
         "includeKeywords",
-        p.include_keywords
+        currentProfile.include_keywords
       );
+
 
       tags(
         "excludeKeywords",
-        p.exclude_keywords
+        currentProfile.exclude_keywords
       );
+
+
+      document
+        .getElementById("editProfileButton")
+        .style.display =
+        "inline-block";
 
     } else {
 
-      document.getElementById("profileName")
-        .textContent = "—";
+      currentProfile = null;
+      currentProfileId = null;
+
+
+      document
+        .getElementById("profileName")
+        .textContent =
+        "—";
+
 
       tags(
         "includeKeywords",
         []
       );
 
+
       tags(
         "excludeKeywords",
         []
       );
+
+
+      document
+        .getElementById("editProfileButton")
+        .style.display =
+        "none";
 
     }
 
@@ -571,8 +1016,15 @@ async function openCabinet(user) {
       await db
         .from("telegram_destinations")
         .select("*")
-        .eq("client_id", CLIENT_ID)
-        .eq("active", true);
+        .eq(
+          "client_id",
+          currentClientId
+        )
+        .eq(
+          "active",
+          true
+        );
+
 
     if (telegramError) {
       throw telegramError;
@@ -581,22 +1033,28 @@ async function openCabinet(user) {
 
     if (telegrams.length) {
 
-      document.getElementById("telegram")
+      document
+        .getElementById("telegram")
         .textContent =
         telegrams[0].label ||
         "Подключён";
 
-      document.getElementById("telegramStatus")
+
+      document
+        .getElementById("telegramStatus")
         .textContent =
         "ON";
 
     } else {
 
-      document.getElementById("telegram")
+      document
+        .getElementById("telegram")
         .textContent =
         "Не подключён";
 
-      document.getElementById("telegramStatus")
+
+      document
+        .getElementById("telegramStatus")
         .textContent =
         "OFF";
 
@@ -611,23 +1069,31 @@ async function openCabinet(user) {
       await db
         .from("client_tender_matches")
         .select("*")
-        .eq("client_id", CLIENT_ID)
+        .eq(
+          "client_id",
+          currentClientId
+        )
         .order(
           "matched_at",
-          { ascending: false }
+          {
+            ascending: false
+          }
         );
+
 
     if (matchesError) {
       throw matchesError;
     }
 
 
-    document.getElementById("totalCount")
+    document
+      .getElementById("totalCount")
       .textContent =
       matches.length;
 
 
-    document.getElementById("newCount")
+    document
+      .getElementById("newCount")
       .textContent =
       matches.filter(
         x => x.status === "new"
@@ -636,7 +1102,10 @@ async function openCabinet(user) {
 
     // ТЕНДЕРЫ
     const tenderBox =
-      document.getElementById("tenders");
+      document.getElementById(
+        "tenders"
+      );
+
 
     tenderBox.innerHTML = "";
 
@@ -667,13 +1136,19 @@ async function openCabinet(user) {
             .single();
 
 
-        if (tenderError || !tender) {
+        if (
+          tenderError ||
+          !tender
+        ) {
           continue;
         }
 
 
         const div =
-          document.createElement("div");
+          document.createElement(
+            "div"
+          );
+
 
         div.className =
           "tender";
@@ -698,7 +1173,7 @@ async function openCabinet(user) {
             Совпадение:
             ${
               (match.matched_keywords || [])
-              .join(", ") || "—"
+                .join(", ") || "—"
             }
           </p>
 
@@ -708,19 +1183,23 @@ async function openCabinet(user) {
         `;
 
 
-        tenderBox.appendChild(div);
+        tenderBox.appendChild(
+          div
+        );
 
       }
 
     }
 
 
-    document.getElementById("loginBlock")
+    document
+      .getElementById("loginBlock")
       .style.display =
       "none";
 
 
-    document.getElementById("cabinet")
+    document
+      .getElementById("cabinet")
       .style.display =
       "block";
 
@@ -732,6 +1211,7 @@ async function openCabinet(user) {
 
     console.error(err);
 
+
     showError(
       "Не удалось открыть кабинет: " +
       (err.message || err)
@@ -742,11 +1222,13 @@ async function openCabinet(user) {
 }
 
 
-// Проверяем существующую сессию
+// ПРОВЕРЯЕМ СЕССИЮ
 async function init() {
 
   const {
-    data: { session }
+    data: {
+      session
+    }
   } =
     await sb.auth.getSession();
 
@@ -763,6 +1245,7 @@ async function init() {
   }
 
 }
+
 
 init();
 
