@@ -130,6 +130,31 @@
       margin-top: 8px;
     }
 
+    .plan-grid {
+      display: grid;
+      grid-template-columns: repeat(5,1fr);
+      gap: 14px;
+      margin-top: 15px;
+    }
+
+    .plan-item {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      padding: 16px;
+    }
+
+    .plan-label {
+      color: #64748b;
+      font-size: 13px;
+      margin-bottom: 7px;
+    }
+
+    .plan-value {
+      font-size: 18px;
+      font-weight: bold;
+    }
+
     .tag {
       display: inline-block;
       background: #e2e8f0;
@@ -140,6 +165,11 @@
 
     .status {
       color: #15803d;
+      font-weight: bold;
+    }
+
+    .status-bad {
+      color: #b91c1c;
       font-weight: bold;
     }
 
@@ -202,6 +232,12 @@
       display: none;
     }
 
+    @media(max-width:900px) {
+      .plan-grid {
+        grid-template-columns: repeat(2,1fr);
+      }
+    }
+
     @media(max-width:800px) {
       .stats {
         grid-template-columns: repeat(2,1fr);
@@ -225,7 +261,6 @@
 
   <div id="message"></div>
 
-  <!-- ВХОД -->
   <div id="loginBlock" class="card login-card">
 
     <h2>Вход в кабинет</h2>
@@ -256,7 +291,6 @@
   </div>
 
 
-  <!-- КАБИНЕТ -->
   <div id="cabinet">
 
     <div class="card">
@@ -328,7 +362,42 @@
     </div>
 
 
-    <!-- ПРОФИЛЬ ПОИСКА -->
+    <div class="card">
+
+      <h2>Тариф и ограничения</h2>
+
+      <div class="plan-grid">
+
+        <div class="plan-item">
+          <div class="plan-label">Тариф</div>
+          <div class="plan-value" id="planTariff">—</div>
+        </div>
+
+        <div class="plan-item">
+          <div class="plan-label">Профили поиска</div>
+          <div class="plan-value" id="planProfiles">—</div>
+        </div>
+
+        <div class="plan-item">
+          <div class="plan-label">Telegram</div>
+          <div class="plan-value" id="planTelegram">—</div>
+        </div>
+
+        <div class="plan-item">
+          <div class="plan-label">Оплачено до</div>
+          <div class="plan-value" id="planExpires">—</div>
+        </div>
+
+        <div class="plan-item">
+          <div class="plan-label">Оплата</div>
+          <div class="plan-value" id="planPayment">—</div>
+        </div>
+
+      </div>
+
+    </div>
+
+
     <div class="card">
 
       <div class="top-row">
@@ -369,7 +438,6 @@
       </div>
 
 
-      <!-- РЕДАКТИРОВАНИЕ -->
       <div
         id="profileEdit"
         class="edit-box"
@@ -439,7 +507,6 @@
     </div>
 
 
-    <!-- ТЕНДЕРЫ -->
     <div class="card">
 
       <h2>
@@ -483,6 +550,7 @@ const db =
 let currentClientId = null;
 let currentProfileId = null;
 let currentProfile = null;
+let currentClient = null;
 
 
 function showError(text) {
@@ -555,6 +623,46 @@ function textToArray(text) {
 }
 
 
+function formatDate(value) {
+
+  if (!value) {
+    return "—";
+  }
+
+  const d = new Date(value);
+
+  return d.toLocaleDateString(
+    "ru-RU"
+  );
+
+}
+
+
+function accessIsActive() {
+
+  if (!currentClient) {
+    return false;
+  }
+
+  if (
+    currentClient.payment_status &&
+    currentClient.payment_status !== "active"
+  ) {
+    return false;
+  }
+
+  if (
+    currentClient.expires_at &&
+    new Date(currentClient.expires_at) < new Date()
+  ) {
+    return false;
+  }
+
+  return true;
+
+}
+
+
 async function login() {
 
   clearMessage();
@@ -622,6 +730,7 @@ async function logout() {
   currentClientId = null;
   currentProfileId = null;
   currentProfile = null;
+  currentClient = null;
 
   document
     .getElementById("cabinet")
@@ -651,6 +760,15 @@ function toggleProfileEdit() {
 
     showError(
       "Профиль поиска не найден."
+    );
+
+    return;
+  }
+
+  if (!accessIsActive()) {
+
+    showError(
+      "Редактирование недоступно: тариф не активен или срок действия истёк."
     );
 
     return;
@@ -714,6 +832,16 @@ async function saveProfile() {
 
     showError(
       "Не удалось определить профиль."
+    );
+
+    return;
+  }
+
+
+  if (!accessIsActive()) {
+
+    showError(
+      "Сохранение недоступно: тариф не активен или срок действия истёк."
     );
 
     return;
@@ -875,7 +1003,6 @@ async function openCabinet(user) {
       "—";
 
 
-    // КЛИЕНТ
     const {
       data: client,
       error: clientError
@@ -893,6 +1020,9 @@ async function openCabinet(user) {
     if (clientError) {
       throw clientError;
     }
+
+
+    currentClient = client;
 
 
     document
@@ -918,7 +1048,40 @@ async function openCabinet(user) {
       '</span>';
 
 
-    // ПРОФИЛИ
+    document
+      .getElementById("planTariff")
+      .textContent =
+      client.tariff || "—";
+
+
+    document
+      .getElementById("planExpires")
+      .textContent =
+      formatDate(
+        client.expires_at
+      );
+
+
+    const paymentEl =
+      document.getElementById(
+        "planPayment"
+      );
+
+
+    paymentEl.textContent =
+      client.payment_status ||
+      "—";
+
+
+    paymentEl.className =
+      "plan-value " +
+      (
+        accessIsActive()
+          ? "status"
+          : "status-bad"
+      );
+
+
     const {
       data: profiles,
       error: profileError
@@ -941,6 +1104,17 @@ async function openCabinet(user) {
       .getElementById("profileCount")
       .textContent =
       profiles.length;
+
+
+    document
+      .getElementById("planProfiles")
+      .textContent =
+      profiles.length +
+      " / " +
+      (
+        client.profile_limit ??
+        "—"
+      );
 
 
     if (profiles.length) {
@@ -1008,7 +1182,6 @@ async function openCabinet(user) {
     }
 
 
-    // TELEGRAM
     const {
       data: telegrams,
       error: telegramError
@@ -1029,6 +1202,17 @@ async function openCabinet(user) {
     if (telegramError) {
       throw telegramError;
     }
+
+
+    document
+      .getElementById("planTelegram")
+      .textContent =
+      telegrams.length +
+      " / " +
+      (
+        client.telegram_limit ??
+        "—"
+      );
 
 
     if (telegrams.length) {
@@ -1061,7 +1245,6 @@ async function openCabinet(user) {
     }
 
 
-    // MATCHES
     const {
       data: matches,
       error: matchesError
@@ -1100,7 +1283,6 @@ async function openCabinet(user) {
       ).length;
 
 
-    // ТЕНДЕРЫ
     const tenderBox =
       document.getElementById(
         "tenders"
@@ -1222,7 +1404,6 @@ async function openCabinet(user) {
 }
 
 
-// ПРОВЕРЯЕМ СЕССИЮ
 async function init() {
 
   const {
