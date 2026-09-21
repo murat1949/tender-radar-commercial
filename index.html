@@ -290,6 +290,98 @@
       flex: 1;
     }
 
+
+    .onboarding-card {
+      background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+    }
+
+    .onboarding-intro {
+      color: #475569;
+      margin-top: -6px;
+      margin-bottom: 18px;
+    }
+
+    .onboarding-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+    }
+
+    .onboarding-step {
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      padding: 16px;
+      background: white;
+      min-height: 128px;
+    }
+
+    .onboarding-step.done {
+      border-color: #86efac;
+      background: #f0fdf4;
+    }
+
+    .onboarding-step.current {
+      border-color: #93c5fd;
+      background: #eff6ff;
+    }
+
+    .onboarding-step.waiting {
+      border-color: #e2e8f0;
+      background: #f8fafc;
+    }
+
+    .onboarding-number {
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: bold;
+      background: #e2e8f0;
+      color: #334155;
+      margin-bottom: 10px;
+    }
+
+    .onboarding-step.done .onboarding-number {
+      background: #16a34a;
+      color: white;
+    }
+
+    .onboarding-step.current .onboarding-number {
+      background: #2563eb;
+      color: white;
+    }
+
+    .onboarding-title {
+      font-weight: bold;
+      margin-bottom: 6px;
+    }
+
+    .onboarding-text {
+      font-size: 14px;
+      color: #64748b;
+      line-height: 1.4;
+    }
+
+    .onboarding-status {
+      margin-top: 10px;
+      font-size: 13px;
+      font-weight: bold;
+    }
+
+    .onboarding-status.done {
+      color: #15803d;
+    }
+
+    .onboarding-status.current {
+      color: #1d4ed8;
+    }
+
+    .onboarding-status.waiting {
+      color: #64748b;
+    }
+
     @media(max-width:900px) {
       .plan-grid {
         grid-template-columns: repeat(2,1fr);
@@ -303,6 +395,10 @@
 
       .top-row {
         flex-direction: column;
+      }
+
+      .onboarding-grid {
+        grid-template-columns: 1fr;
       }
     }
   </style>
@@ -585,6 +681,48 @@
         <div class="plan-item">
           <div class="plan-label">Оплата</div>
           <div class="plan-value" id="planPayment">—</div>
+        </div>
+
+      </div>
+
+    </div>
+
+
+    <div class="card onboarding-card" id="onboardingCard">
+
+      <h2>Первые шаги</h2>
+
+      <p class="onboarding-intro">
+        Настройте кабинет один раз — дальше Tender Radar будет работать по вашему профилю.
+      </p>
+
+      <div class="onboarding-grid">
+
+        <div id="onboardingStep1" class="onboarding-step waiting">
+          <div class="onboarding-number">1</div>
+          <div class="onboarding-title">Создайте профиль поиска</div>
+          <div class="onboarding-text">
+            Укажите, какие товары или услуги нужно искать, и что исключать.
+          </div>
+          <div id="onboardingStatus1" class="onboarding-status waiting">Ожидает</div>
+        </div>
+
+        <div id="onboardingStep2" class="onboarding-step waiting">
+          <div class="onboarding-number">2</div>
+          <div class="onboarding-title">Подключите Telegram</div>
+          <div class="onboarding-text">
+            Получайте уведомления о новых подходящих тендерах сразу после появления.
+          </div>
+          <div id="onboardingStatus2" class="onboarding-status waiting">Ожидает</div>
+        </div>
+
+        <div id="onboardingStep3" class="onboarding-step waiting">
+          <div class="onboarding-number">3</div>
+          <div class="onboarding-title">Получайте подходящие тендеры</div>
+          <div class="onboarding-text">
+            Система будет показывать найденные совпадения в блоке «Последние тендеры».
+          </div>
+          <div id="onboardingStatus3" class="onboarding-status waiting">Ожидает</div>
         </div>
 
       </div>
@@ -941,6 +1079,91 @@ function accessIsActive() {
 
   return true;
 
+}
+
+
+function setOnboardingStep(stepNumber, state, text) {
+  const step =
+    document.getElementById(
+      "onboardingStep" + stepNumber
+    );
+
+  const status =
+    document.getElementById(
+      "onboardingStatus" + stepNumber
+    );
+
+  if (!step || !status) {
+    return;
+  }
+
+  step.className =
+    "onboarding-step " + state;
+
+  status.className =
+    "onboarding-status " + state;
+
+  status.textContent = text;
+}
+
+
+function updateOnboarding(profileCount, telegramCount) {
+
+  const hasProfile =
+    Number(profileCount || 0) > 0;
+
+  const hasTelegram =
+    Number(telegramCount || 0) > 0;
+
+  if (hasProfile) {
+    setOnboardingStep(
+      1,
+      "done",
+      "Готово ✓"
+    );
+  } else {
+    setOnboardingStep(
+      1,
+      "current",
+      "Сделайте сейчас"
+    );
+  }
+
+  if (hasTelegram) {
+    setOnboardingStep(
+      2,
+      "done",
+      "Готово ✓"
+    );
+  } else if (hasProfile) {
+    setOnboardingStep(
+      2,
+      "current",
+      "Следующий шаг"
+    );
+  } else {
+    setOnboardingStep(
+      2,
+      "waiting",
+      "После шага 1"
+    );
+  }
+
+  if (hasProfile) {
+    setOnboardingStep(
+      3,
+      hasTelegram ? "done" : "current",
+      hasTelegram
+        ? "Система настроена ✓"
+        : "Поиск уже работает"
+    );
+  } else {
+    setOnboardingStep(
+      3,
+      "waiting",
+      "После создания профиля"
+    );
+  }
 }
 
 
@@ -2092,6 +2315,11 @@ async function openCabinet(user) {
         "OFF";
 
     }
+
+    updateOnboarding(
+      profiles.length,
+      telegrams.length
+    );
 
 
     const {
