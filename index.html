@@ -232,6 +232,37 @@
       display: none;
     }
 
+    .forgot-wrap {
+      text-align: right;
+      margin-top: -7px;
+      margin-bottom: 12px;
+    }
+
+    .link-button {
+      background: none;
+      color: #2563eb;
+      padding: 0;
+      font-size: 14px;
+      text-decoration: underline;
+      cursor: pointer;
+    }
+
+    .recovery-card {
+      max-width: 440px;
+      margin: 50px auto;
+      display: none;
+    }
+
+    .recovery-actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 10px;
+    }
+
+    .recovery-actions button {
+      flex: 1;
+    }
+
     @media(max-width:900px) {
       .plan-grid {
         grid-template-columns: repeat(2,1fr);
@@ -281,11 +312,83 @@
       autocomplete="current-password"
     >
 
+    <div class="forgot-wrap">
+      <button
+        type="button"
+        class="link-button"
+        onclick="showPasswordRecovery()"
+      >
+        Забыли пароль?
+      </button>
+    </div>
+
     <button
       class="primary login-button"
       onclick="login()"
     >
       Войти
+    </button>
+
+  </div>
+
+
+  <div id="recoveryRequestBlock" class="card recovery-card">
+
+    <h2>Восстановление пароля</h2>
+
+    <p>Введите email, который используется для входа в Tender Radar KZ Commercial.</p>
+
+    <input
+      id="recoveryEmail"
+      type="email"
+      placeholder="Email"
+      autocomplete="email"
+    >
+
+    <div class="recovery-actions">
+      <button
+        class="secondary"
+        onclick="cancelPasswordRecovery()"
+      >
+        Назад
+      </button>
+
+      <button
+        class="primary"
+        onclick="sendPasswordRecovery()"
+      >
+        Отправить ссылку
+      </button>
+    </div>
+
+  </div>
+
+
+  <div id="newPasswordBlock" class="card recovery-card">
+
+    <h2>Новый пароль</h2>
+
+    <p>Введите новый пароль дважды.</p>
+
+    <input
+      id="newPassword"
+      type="password"
+      placeholder="Новый пароль"
+      autocomplete="new-password"
+    >
+
+    <input
+      id="newPasswordRepeat"
+      type="password"
+      placeholder="Повторите пароль"
+      autocomplete="new-password"
+    >
+
+    <button
+      class="primary login-button"
+      onclick="saveNewPassword()"
+    >
+      Сохранить новый пароль
     </button>
 
   </div>
@@ -661,6 +764,182 @@ function accessIsActive() {
   return true;
 
 }
+
+
+function showPasswordRecovery() {
+
+  clearMessage();
+
+  const currentEmail =
+    document
+      .getElementById("email")
+      .value
+      .trim();
+
+  document
+    .getElementById("recoveryEmail")
+    .value = currentEmail;
+
+  document
+    .getElementById("loginBlock")
+    .style.display = "none";
+
+  document
+    .getElementById("recoveryRequestBlock")
+    .style.display = "block";
+
+}
+
+
+function cancelPasswordRecovery() {
+
+  clearMessage();
+
+  document
+    .getElementById("recoveryRequestBlock")
+    .style.display = "none";
+
+  document
+    .getElementById("loginBlock")
+    .style.display = "block";
+
+}
+
+
+async function sendPasswordRecovery() {
+
+  clearMessage();
+
+  const email =
+    document
+      .getElementById("recoveryEmail")
+      .value
+      .trim();
+
+  if (!email) {
+    showError("Введите email.");
+    return;
+  }
+
+  showInfo("Отправляем письмо для восстановления пароля...");
+
+  const redirectTo =
+    window.location.origin +
+    window.location.pathname;
+
+  const { error } =
+    await sb.auth.resetPasswordForEmail(
+      email,
+      { redirectTo }
+    );
+
+  if (error) {
+    showError(
+      "Не удалось отправить письмо: " +
+      error.message
+    );
+    return;
+  }
+
+  showSuccess(
+    "Письмо отправлено. Откройте ссылку из письма и задайте новый пароль."
+  );
+
+}
+
+
+async function saveNewPassword() {
+
+  clearMessage();
+
+  const password =
+    document
+      .getElementById("newPassword")
+      .value;
+
+  const repeat =
+    document
+      .getElementById("newPasswordRepeat")
+      .value;
+
+  if (!password || !repeat) {
+    showError("Введите новый пароль дважды.");
+    return;
+  }
+
+  if (password.length < 6) {
+    showError("Пароль должен содержать не менее 6 символов.");
+    return;
+  }
+
+  if (password !== repeat) {
+    showError("Пароли не совпадают.");
+    return;
+  }
+
+  showInfo("Сохраняем новый пароль...");
+
+  const { error } =
+    await sb.auth.updateUser({
+      password
+    });
+
+  if (error) {
+    showError(
+      "Не удалось изменить пароль: " +
+      error.message
+    );
+    return;
+  }
+
+  document
+    .getElementById("newPasswordBlock")
+    .style.display = "none";
+
+  document
+    .getElementById("loginBlock")
+    .style.display = "block";
+
+  document
+    .getElementById("password")
+    .value = "";
+
+  showSuccess(
+    "Пароль успешно изменён. Теперь войдите с новым паролем."
+  );
+
+  await sb.auth.signOut();
+
+}
+
+
+sb.auth.onAuthStateChange((event) => {
+
+  if (event === "PASSWORD_RECOVERY") {
+
+    document
+      .getElementById("loginBlock")
+      .style.display = "none";
+
+    document
+      .getElementById("recoveryRequestBlock")
+      .style.display = "none";
+
+    document
+      .getElementById("cabinet")
+      .style.display = "none";
+
+    document
+      .getElementById("newPasswordBlock")
+      .style.display = "block";
+
+    showInfo(
+      "Ссылка подтверждена. Задайте новый пароль."
+    );
+
+  }
+
+});
 
 
 async function login() {
@@ -1405,6 +1684,14 @@ async function openCabinet(user) {
 
 
 async function init() {
+
+  const isRecoveryLink =
+    window.location.hash.includes("type=recovery") ||
+    window.location.search.includes("type=recovery");
+
+  if (isRecoveryLink) {
+    return;
+  }
 
   const {
     data: {
