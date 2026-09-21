@@ -247,6 +247,19 @@
       cursor: pointer;
     }
 
+    .register-wrap {
+      text-align: center;
+      margin-top: 14px;
+      font-size: 14px;
+      color: #64748b;
+    }
+
+    .register-card {
+      max-width: 440px;
+      margin: 50px auto;
+      display: none;
+    }
+
     .recovery-card {
       max-width: 440px;
       margin: 50px auto;
@@ -328,6 +341,70 @@
     >
       Войти
     </button>
+
+    <div class="register-wrap">
+      Нет аккаунта?
+      <button
+        type="button"
+        class="link-button"
+        onclick="showRegistration()"
+      >
+        Зарегистрироваться
+      </button>
+    </div>
+
+  </div>
+
+
+  <div id="registrationBlock" class="card register-card">
+
+    <h2>Регистрация</h2>
+
+    <p>Создайте аккаунт Tender Radar KZ Commercial.</p>
+
+    <input
+      id="registerCompany"
+      type="text"
+      placeholder="Название компании"
+      autocomplete="organization"
+    >
+
+    <input
+      id="registerEmail"
+      type="email"
+      placeholder="Email"
+      autocomplete="email"
+    >
+
+    <input
+      id="registerPassword"
+      type="password"
+      placeholder="Пароль"
+      autocomplete="new-password"
+    >
+
+    <input
+      id="registerPasswordRepeat"
+      type="password"
+      placeholder="Повторите пароль"
+      autocomplete="new-password"
+    >
+
+    <div class="recovery-actions">
+      <button
+        class="secondary"
+        onclick="cancelRegistration()"
+      >
+        Назад
+      </button>
+
+      <button
+        class="primary"
+        onclick="registerUser()"
+      >
+        Зарегистрироваться
+      </button>
+    </div>
 
   </div>
 
@@ -766,6 +843,130 @@ function accessIsActive() {
 }
 
 
+function showRegistration() {
+
+  clearMessage();
+
+  document
+    .getElementById("loginBlock")
+    .style.display = "none";
+
+  document
+    .getElementById("registrationBlock")
+    .style.display = "block";
+
+}
+
+
+function cancelRegistration() {
+
+  clearMessage();
+
+  document
+    .getElementById("registrationBlock")
+    .style.display = "none";
+
+  document
+    .getElementById("loginBlock")
+    .style.display = "block";
+
+}
+
+
+async function registerUser() {
+
+  clearMessage();
+
+  const company =
+    document
+      .getElementById("registerCompany")
+      .value
+      .trim();
+
+  const email =
+    document
+      .getElementById("registerEmail")
+      .value
+      .trim();
+
+  const password =
+    document
+      .getElementById("registerPassword")
+      .value;
+
+  const repeat =
+    document
+      .getElementById("registerPasswordRepeat")
+      .value;
+
+  if (!company || !email || !password || !repeat) {
+    showError("Заполните все поля регистрации.");
+    return;
+  }
+
+  if (password.length < 6) {
+    showError("Пароль должен содержать не менее 6 символов.");
+    return;
+  }
+
+  if (password !== repeat) {
+    showError("Пароли не совпадают.");
+    return;
+  }
+
+  showInfo("Создаём аккаунт...");
+
+  const { data, error } =
+    await sb.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
+          company_name: company
+        },
+        emailRedirectTo:
+          window.location.origin +
+          window.location.pathname
+      }
+    });
+
+  if (error) {
+    showError(
+      "Не удалось зарегистрироваться: " +
+      error.message
+    );
+    return;
+  }
+
+  document
+    .getElementById("registrationBlock")
+    .style.display = "none";
+
+  document
+    .getElementById("loginBlock")
+    .style.display = "block";
+
+  document
+    .getElementById("email")
+    .value = email;
+
+  document
+    .getElementById("password")
+    .value = "";
+
+  if (data.session) {
+    showSuccess(
+      "Регистрация прошла успешно. Аккаунт создан. Следующий этап — автоматическое создание карточки клиента."
+    );
+  } else {
+    showSuccess(
+      "Регистрация принята. Проверьте email и подтвердите адрес. После подтверждения вернитесь на страницу входа."
+    );
+  }
+
+}
+
+
 function showPasswordRecovery() {
 
   clearMessage();
@@ -782,6 +983,10 @@ function showPasswordRecovery() {
 
   document
     .getElementById("loginBlock")
+    .style.display = "none";
+
+  document
+    .getElementById("registrationBlock")
     .style.display = "none";
 
   document
@@ -923,6 +1128,10 @@ sb.auth.onAuthStateChange((event) => {
 
     document
       .getElementById("recoveryRequestBlock")
+      .style.display = "none";
+
+    document
+      .getElementById("registrationBlock")
       .style.display = "none";
 
     document
