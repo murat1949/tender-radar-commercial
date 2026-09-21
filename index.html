@@ -291,6 +291,41 @@
     }
 
 
+
+    .telegram-card {
+      background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+    }
+
+    .telegram-summary {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .telegram-state {
+      font-weight: bold;
+      color: #475569;
+    }
+
+    .telegram-state.on {
+      color: #15803d;
+    }
+
+    .telegram-form {
+      display: none;
+      margin-top: 18px;
+      padding-top: 18px;
+      border-top: 1px solid #e5e7eb;
+    }
+
+    .telegram-form label {
+      display: block;
+      font-weight: bold;
+      margin-top: 5px;
+    }
+
     .onboarding-card {
       background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
     }
@@ -730,6 +765,73 @@
     </div>
 
 
+    <div class="card telegram-card" id="telegramCard">
+
+      <div class="telegram-summary">
+
+        <div>
+          <h2 style="margin-top:0">Telegram</h2>
+          <div id="telegramConnectionState" class="telegram-state">
+            Не подключён
+          </div>
+          <div class="hint" style="margin-top:8px;margin-bottom:0">
+            Подключите Telegram, чтобы получать уведомления о новых подходящих тендерах.
+          </div>
+        </div>
+
+        <button
+          id="connectTelegramButton"
+          class="success-button"
+          onclick="showTelegramConnect()"
+        >
+          Подключить Telegram
+        </button>
+
+      </div>
+
+      <div id="telegramConnectForm" class="telegram-form">
+
+        <h3>Подключение Telegram</h3>
+
+        <label>Название</label>
+        <input
+          id="telegramLabel"
+          type="text"
+          placeholder="Например: Tender Radar — Клининг"
+        >
+
+        <label>Chat ID</label>
+        <input
+          id="telegramChatId"
+          type="text"
+          placeholder="Например: 123456789"
+        >
+
+        <div class="hint">
+          Для текущего MVP используется Telegram Chat ID. Позже этот шаг можно заменить подключением через бота.
+        </div>
+
+        <div class="button-row">
+          <button
+            class="success-button"
+            onclick="connectTelegram()"
+          >
+            Сохранить подключение
+          </button>
+
+          <button
+            class="secondary"
+            onclick="cancelTelegramConnect()"
+          >
+            Отмена
+          </button>
+        </div>
+
+      </div>
+
+    </div>
+
+
     <div class="card">
 
       <div class="top-row">
@@ -970,6 +1072,7 @@ let currentClientId = null;
 let currentProfileId = null;
 let currentProfile = null;
 let currentClient = null;
+let currentTelegramCount = 0;
 
 
 function showError(text) {
@@ -1543,6 +1646,7 @@ async function logout() {
   currentProfileId = null;
   currentProfile = null;
   currentClient = null;
+  currentTelegramCount = 0;
 
   document
     .getElementById("cabinet")
@@ -1565,6 +1669,196 @@ async function logout() {
 
 }
 
+
+
+function showTelegramConnect() {
+
+  clearMessage();
+
+  if (!currentClient) {
+    showError("Не удалось определить клиента.");
+    return;
+  }
+
+  if (!accessIsActive()) {
+    showError(
+      "Подключение Telegram недоступно: тариф не активен или срок действия истёк."
+    );
+    return;
+  }
+
+  const limit = currentClient.telegram_limit;
+
+  if (
+    limit !== null &&
+    limit !== undefined &&
+    currentTelegramCount >= Number(limit)
+  ) {
+    showError("Достигнут лимит Telegram для вашего тарифа.");
+    return;
+  }
+
+  document
+    .getElementById("telegramConnectForm")
+    .style.display = "block";
+
+  document
+    .getElementById("connectTelegramButton")
+    .style.display = "none";
+}
+
+
+function cancelTelegramConnect() {
+
+  document
+    .getElementById("telegramConnectForm")
+    .style.display = "none";
+
+  if (currentTelegramCount === 0) {
+    document
+      .getElementById("connectTelegramButton")
+      .style.display = "inline-block";
+  }
+}
+
+
+async function connectTelegram() {
+
+  clearMessage();
+
+  if (!currentClientId || !currentClient) {
+    showError("Не удалось определить клиента.");
+    return;
+  }
+
+  if (!accessIsActive()) {
+    showError(
+      "Подключение Telegram недоступно: тариф не активен или срок действия истёк."
+    );
+    return;
+  }
+
+  const label =
+    document
+      .getElementById("telegramLabel")
+      .value
+      .trim();
+
+  const chatId =
+    document
+      .getElementById("telegramChatId")
+      .value
+      .trim();
+
+  if (!chatId) {
+    showError("Введите Telegram Chat ID.");
+    return;
+  }
+
+  const limit = currentClient.telegram_limit;
+
+  const {
+    data: existingTelegrams,
+    error: countError
+  } =
+    await db
+      .from("telegram_destinations")
+      .select("id")
+      .eq("client_id", currentClientId)
+      .eq("active", true);
+
+  if (countError) {
+    showError(
+      "Не удалось проверить лимит Telegram: " +
+      countError.message
+    );
+    return;
+  }
+
+  if (
+    limit !== null &&
+    limit !== undefined &&
+    existingTelegrams.length >= Number(limit)
+  ) {
+    showError("Достигнут лимит Telegram для вашего тарифа.");
+    return;
+  }
+
+  showInfo("Подключаем Telegram...");
+
+  const {
+    data,
+    error
+  } =
+    await db
+      .from("telegram_destinations")
+      .insert({
+        client_id: currentClientId,
+        chat_id: chatId,
+        label: label || "Telegram",
+        active: true
+      })
+      .select()
+      .single();
+
+  if (error) {
+    showError(
+      "Не удалось подключить Telegram: " +
+      error.message
+    );
+    return;
+  }
+
+  currentTelegramCount =
+    existingTelegrams.length + 1;
+
+  document
+    .getElementById("telegram")
+    .textContent =
+    data.label || "Подключён";
+
+  document
+    .getElementById("telegramStatus")
+    .textContent = "ON";
+
+  document
+    .getElementById("planTelegram")
+    .textContent =
+    currentTelegramCount +
+    " / " +
+    (
+      currentClient.telegram_limit ??
+      "—"
+    );
+
+  document
+    .getElementById("telegramConnectionState")
+    .textContent =
+    (data.label || "Telegram") +
+    " — подключён";
+
+  document
+    .getElementById("telegramConnectionState")
+    .className =
+    "telegram-state on";
+
+  document
+    .getElementById("telegramConnectForm")
+    .style.display = "none";
+
+  document
+    .getElementById("connectTelegramButton")
+    .style.display = "none";
+
+  updateOnboarding(
+    currentProfile ? 1 : 0,
+    currentTelegramCount
+  );
+
+  showSuccess(
+    "Telegram подключён. Уведомления можно отправлять в этот чат."
+  );
+}
 
 
 function showCreateProfile() {
@@ -2276,6 +2570,9 @@ async function openCabinet(user) {
     }
 
 
+    currentTelegramCount =
+      telegrams.length;
+
     document
       .getElementById("planTelegram")
       .textContent =
@@ -2301,6 +2598,27 @@ async function openCabinet(user) {
         .textContent =
         "ON";
 
+      document
+        .getElementById("telegramConnectionState")
+        .textContent =
+        (telegrams[0].label || "Telegram") +
+        " — подключён";
+
+      document
+        .getElementById("telegramConnectionState")
+        .className =
+        "telegram-state on";
+
+      document
+        .getElementById("connectTelegramButton")
+        .style.display =
+        "none";
+
+      document
+        .getElementById("telegramConnectForm")
+        .style.display =
+        "none";
+
     } else {
 
       document
@@ -2313,6 +2631,26 @@ async function openCabinet(user) {
         .getElementById("telegramStatus")
         .textContent =
         "OFF";
+
+      document
+        .getElementById("telegramConnectionState")
+        .textContent =
+        "Не подключён";
+
+      document
+        .getElementById("telegramConnectionState")
+        .className =
+        "telegram-state";
+
+      document
+        .getElementById("connectTelegramButton")
+        .style.display =
+        "inline-block";
+
+      document
+        .getElementById("telegramConnectForm")
+        .style.display =
+        "none";
 
     }
 
