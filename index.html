@@ -215,6 +215,20 @@
       margin-top: 5px;
     }
 
+    .empty-profile {
+      display: none;
+      margin-top: 18px;
+      padding: 18px;
+      border: 1px dashed #cbd5e1;
+      border-radius: 12px;
+      background: #f8fafc;
+    }
+
+    .empty-profile p {
+      margin: 0 0 14px;
+      color: #475569;
+    }
+
     .hint {
       font-size: 13px;
       color: #64748b;
@@ -594,6 +608,15 @@
           Редактировать профиль
         </button>
 
+        <button
+          id="createProfileButton"
+          class="success-button"
+          style="display:none"
+          onclick="showCreateProfile()"
+        >
+          Создать профиль поиска
+        </button>
+
       </div>
 
       <div id="profileView">
@@ -614,6 +637,84 @@
         </p>
 
         <div id="excludeKeywords"></div>
+
+        <div id="emptyProfileBox" class="empty-profile">
+          <p>
+            У вас пока нет профиля поиска. Создайте первый профиль —
+            система будет использовать его для подбора тендеров.
+          </p>
+          <button
+            class="success-button"
+            onclick="showCreateProfile()"
+          >
+            Создать первый профиль
+          </button>
+        </div>
+
+      </div>
+
+
+      <div
+        id="profileCreate"
+        class="edit-box"
+      >
+
+        <h3>
+          Создание первого профиля
+        </h3>
+
+        <label>
+          Название профиля
+        </label>
+
+        <input
+          id="createProfileName"
+          type="text"
+          placeholder="Например: Клининговые услуги"
+        >
+
+        <label>
+          Ключевые слова
+        </label>
+
+        <textarea
+          id="createIncludeKeywords"
+          placeholder="Например: клининг, уборка, уборка помещений"
+        ></textarea>
+
+        <div class="hint">
+          Слова вводите через запятую.
+        </div>
+
+        <label>
+          Исключения
+        </label>
+
+        <textarea
+          id="createExcludeKeywords"
+          placeholder="Например: вакансия, аренда"
+        ></textarea>
+
+        <div class="hint">
+          Можно оставить пустым. Источники по умолчанию:
+          goszakup и samruk.
+        </div>
+
+        <div class="button-row">
+          <button
+            class="success-button"
+            onclick="createProfile()"
+          >
+            Создать профиль
+          </button>
+
+          <button
+            class="secondary"
+            onclick="cancelCreateProfile()"
+          >
+            Отмена
+          </button>
+        </div>
 
       </div>
 
@@ -1242,6 +1343,236 @@ async function logout() {
 }
 
 
+
+function showCreateProfile() {
+
+  clearMessage();
+
+  if (!currentClient) {
+    showError("Не удалось определить клиента.");
+    return;
+  }
+
+  if (!accessIsActive()) {
+    showError(
+      "Создание профиля недоступно: тариф не активен или срок действия истёк."
+    );
+    return;
+  }
+
+  const limit = currentClient.profile_limit;
+
+  if (
+    limit !== null &&
+    limit !== undefined &&
+    Number(limit) <= 0
+  ) {
+    showError("Ваш тариф не позволяет создавать профили поиска.");
+    return;
+  }
+
+  if (currentProfile) {
+    showError("Профиль поиска уже создан.");
+    return;
+  }
+
+  document
+    .getElementById("profileCreate")
+    .style.display = "block";
+
+  document
+    .getElementById("createProfileButton")
+    .style.display = "none";
+
+  document
+    .getElementById("emptyProfileBox")
+    .style.display = "none";
+
+}
+
+
+function cancelCreateProfile() {
+
+  document
+    .getElementById("profileCreate")
+    .style.display = "none";
+
+  if (!currentProfile) {
+    document
+      .getElementById("createProfileButton")
+      .style.display = "inline-block";
+
+    document
+      .getElementById("emptyProfileBox")
+      .style.display = "block";
+  }
+
+}
+
+
+async function createProfile() {
+
+  clearMessage();
+
+  if (!currentClientId || !currentClient) {
+    showError("Не удалось определить клиента.");
+    return;
+  }
+
+  if (!accessIsActive()) {
+    showError(
+      "Создание профиля недоступно: тариф не активен или срок действия истёк."
+    );
+    return;
+  }
+
+  const limit = currentClient.profile_limit;
+
+  if (
+    limit !== null &&
+    limit !== undefined &&
+    Number(limit) <= 0
+  ) {
+    showError("Ваш тариф не позволяет создавать профили поиска.");
+    return;
+  }
+
+  const name =
+    document
+      .getElementById("createProfileName")
+      .value
+      .trim();
+
+  const includeKeywords =
+    textToArray(
+      document
+        .getElementById("createIncludeKeywords")
+        .value
+    );
+
+  const excludeKeywords =
+    textToArray(
+      document
+        .getElementById("createExcludeKeywords")
+        .value
+    );
+
+  if (!name) {
+    showError("Введите название профиля.");
+    return;
+  }
+
+  if (!includeKeywords.length) {
+    showError("Добавьте хотя бы одно ключевое слово.");
+    return;
+  }
+
+  showInfo("Создаём профиль поиска...");
+
+  const {
+    data: existingProfiles,
+    error: countError
+  } =
+    await db
+      .from("profiles")
+      .select("id")
+      .eq("client_id", currentClientId);
+
+  if (countError) {
+    showError(
+      "Не удалось проверить лимит профилей: " +
+      countError.message
+    );
+    return;
+  }
+
+  if (
+    limit !== null &&
+    limit !== undefined &&
+    existingProfiles.length >= Number(limit)
+  ) {
+    showError("Достигнут лимит профилей для вашего тарифа.");
+    return;
+  }
+
+  const {
+    data,
+    error
+  } =
+    await db
+      .from("profiles")
+      .insert({
+        client_id: currentClientId,
+        name: name,
+        include_keywords: includeKeywords,
+        exclude_keywords: excludeKeywords
+      })
+      .select()
+      .single();
+
+  if (error) {
+    showError(
+      "Не удалось создать профиль: " +
+      error.message
+    );
+    return;
+  }
+
+  currentProfile = data;
+  currentProfileId = data.id;
+
+  document
+    .getElementById("profileName")
+    .textContent =
+    data.name || "—";
+
+  tags(
+    "includeKeywords",
+    data.include_keywords
+  );
+
+  tags(
+    "excludeKeywords",
+    data.exclude_keywords
+  );
+
+  document
+    .getElementById("profileCreate")
+    .style.display = "none";
+
+  document
+    .getElementById("createProfileButton")
+    .style.display = "none";
+
+  document
+    .getElementById("emptyProfileBox")
+    .style.display = "none";
+
+  document
+    .getElementById("editProfileButton")
+    .style.display = "inline-block";
+
+  document
+    .getElementById("profileCount")
+    .textContent = existingProfiles.length + 1;
+
+  document
+    .getElementById("planProfiles")
+    .textContent =
+    (existingProfiles.length + 1) +
+    " / " +
+    (
+      currentClient.profile_limit ??
+      "—"
+    );
+
+  showSuccess(
+    "Профиль поиска создан. Теперь его можно редактировать."
+  );
+
+}
+
+
 function toggleProfileEdit() {
 
   if (!currentProfile) {
@@ -1638,6 +1969,21 @@ async function openCabinet(user) {
         .style.display =
         "inline-block";
 
+      document
+        .getElementById("createProfileButton")
+        .style.display =
+        "none";
+
+      document
+        .getElementById("emptyProfileBox")
+        .style.display =
+        "none";
+
+      document
+        .getElementById("profileCreate")
+        .style.display =
+        "none";
+
     } else {
 
       currentProfile = null;
@@ -1664,6 +2010,21 @@ async function openCabinet(user) {
 
       document
         .getElementById("editProfileButton")
+        .style.display =
+        "none";
+
+      document
+        .getElementById("createProfileButton")
+        .style.display =
+        "inline-block";
+
+      document
+        .getElementById("emptyProfileBox")
+        .style.display =
+        "block";
+
+      document
+        .getElementById("profileCreate")
         .style.display =
         "none";
 
