@@ -1,21 +1,15 @@
 # -*- coding: utf-8 -*-
 """
-Tender Radar KZ Commercial — Goszakup sync
+Tender Radar KZ Commercial — Goszakup sync + automatic profile matching
 PROTOCOL 13B
 
-Назначение:
-1) читает активные профили commercial.profiles;
-2) собирает уникальные ключевые слова только для профилей, где выбран goszakup;
-3) запускает существующий стабильный collector_goszakup.py;
-4) читает output/tenders.json;
-5) нормализует данные под commercial.tenders;
-6) деактивирует прежние активные goszakup-записи;
-7) делает UPSERT свежего набора в схему commercial.
+Flow:
+Goszakup -> commercial.tenders -> commercial.client_tender_matches
 
-Важно:
-- collector_goszakup.py берём БЕЗ ИЗМЕНЕНИЙ из стабильного проекта Айдара.
-- Проект Айдара этот файл не трогает.
-- Запись идёт только в Commercial Supabase через Content-Profile: commercial.
+Secrets / env:
+SUPABASE_URL
+SUPABASE_SERVICE_ROLE_KEY
+GOSZAKUP_TOKEN
 """
 
 import os
@@ -64,6 +58,25 @@ def headers(cfg, *, write=False):
     return h
 
 
+def rest_get(cfg, path):
+    url = cfg["SUPABASE_URL"].rstrip("/") + "/rest/v1/" + path.lstrip("/")
+    req = urllib.request.Request(url, headers=headers(cfg), method="GET")
+    with urllib.request.urlopen(req, timeout=120) as resp:
+        return json.loads(resp.read().decode("utf-8"))
+
+
+def rest_post(cfg, path, payload, prefer="return=minimal"):
+    url = cfg["SUPABASE_URL"].rstrip("/") + "/rest/v1/" + path.lstrip("/")
+    req = urllib.request.Request(
+        url,
+        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        headers={**headers(cfg, write=True), "Prefer": prefer},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=120) as resp:
+        return resp.read()
+
+
 def load_json(path: Path):
     return json.loads(path.read_text(encoding="utf-8"))
 
@@ -106,73 +119,61 @@ def goszakup_is_active(status, expires_at):
     return False
 
 
-def rest_get(cfg, path):
-    url = cfg["SUPABASE_URL"].rstrip("/") + "/rest/v1/" + path.lstrip("/")
-    req = urllib.request.Request(url, headers=headers(cfg), method="GET")
-    with urllib.request.urlopen(req, timeout=60) as resp:
-        return json.loads(resp.read().decode("utf-8"))
+def normalize_list(v):
+    if v is None:
+        return []
+    if isinstance(v, list):
+        return [str(x).strip() for x in v if str(x).strip()]
+    if isinstance(v, str):
+        try:
+            parsed = json.loads(v)
+            if isinstance(parsed, list):
+                return [str(x).strip() for x in parsed if str(x).strip()]
+        except Exception:
+            pass
+        return [x.strip() for x in v.split(",") if x.strip()]
+    return []
+
+
+def load_profiles(cfg):
+    return rest_get(
+        cfg,
+        "profiles?select=id,client_id,name,include_keywords,exclude_keywords,sources,active&active=eq.true"
+    )
 
 
 def load_commercial_keywords(cfg):
-    rows = rest_get(
-        cfg,
-        "profiles?select=include_keywords,sources,active&active=eq.true"
-    )
-
     found = []
     seen = set()
 
-    for row in rows:
-        sources = row.get("sources") or []
-        if isinstance(sources, str):
-            try:
-                sources = json.loads(sources)
-            except Exception:
-                sources = [sources]
-
+    for row in load_profiles(cfg):
+        sources = normalize_list(row.get("sources"))
         if "goszakup" not in sources:
             continue
 
-        words = row.get("include_keywords") or []
-        if isinstance(words, str):
-            try:
-                parsed = json.loads(words)
-                words = parsed if isinstance(parsed, list) else [words]
-            except Exception:
-                words = [x.strip() for x in words.split(",") if x.strip()]
-
-        for word in words:
-            w = str(word or "").strip()
-            key = w.lower()
-            if w and key not in seen:
+        for word in normalize_list(row.get("include_keywords")):
+            key = word.lower()
+            if key not in seen:
                 seen.add(key)
-                found.append(w)
+                found.append(word)
 
     if not found:
         raise RuntimeError(
             "Нет активных ключевых слов для профилей, где выбран источник goszakup."
         )
-
     return found
 
 
 def run_collector(cfg, keywords):
     collector = ROOT / "collector_goszakup.py"
     if not collector.exists():
-        raise RuntimeError(
-            "Не найден collector_goszakup.py. "
-            "Скопируйте стабильную версию из проекта tender-radar-kz."
-        )
+        raise RuntimeError("Не найден collector_goszakup.py")
 
     child_env = os.environ.copy()
     child_env["GOSZAKUP_TOKEN"] = cfg["GOSZAKUP_TOKEN"]
     child_env["GOSZAKUP_KEYWORDS"] = ",".join(keywords)
 
-    # Для первого коммерческого запуска PDF не отключаем:
-    # стабильный коллектор сам применит свой circuit breaker.
     print("COMMERCIAL KEYWORDS:", ", ".join(keywords))
-    print("RUN:", collector.name)
-
     proc = subprocess.run(
         [sys.executable, str(collector)],
         cwd=str(ROOT),
@@ -206,7 +207,6 @@ def make_goszakup():
         expires_at = normalize_goszakup_datetime(r.get("end_date"))
         is_active = goszakup_is_active(status, expires_at)
 
-        # В commercial.tenders НЕТ status_code — намеренно не отправляем его.
         out.append({
             "source_code": "goszakup",
             "source_tender_id": ann or None,
@@ -242,28 +242,22 @@ def deactivate_existing_goszakup(cfg):
     req = urllib.request.Request(
         endpoint,
         data=json.dumps({"is_active": False}).encode("utf-8"),
-        headers={
-            **headers(cfg, write=True),
-            "Prefer": "return=minimal",
-        },
+        headers={**headers(cfg, write=True), "Prefer": "return=minimal"},
         method="PATCH",
     )
     with urllib.request.urlopen(req, timeout=120) as resp:
         resp.read()
-    print("STALE goszakup: previous active rows -> inactive")
 
 
 def upload_rows(cfg, rows):
     if not rows:
-        print("WARNING: Goszakup returned 0 rows.")
-        print("Existing Commercial rows are NOT changed.")
+        print("WARNING: Goszakup returned 0 rows. Existing rows unchanged.")
         return 0
 
     endpoint = (
         cfg["SUPABASE_URL"].rstrip("/")
         + "/rest/v1/tenders?on_conflict=source_code,source_lot_id"
     )
-
     h = {
         **headers(cfg, write=True),
         "Prefer": "resolution=merge-duplicates,return=minimal",
@@ -278,24 +272,102 @@ def upload_rows(cfg, rows):
             headers=h,
             method="POST",
         )
-        try:
-            with urllib.request.urlopen(req, timeout=120) as resp:
-                resp.read()
-            sent += len(batch)
-            print("SYNC goszakup:", sent, "/", len(rows))
-        except urllib.error.HTTPError as exc:
-            body = exc.read().decode("utf-8", errors="replace")
-            print("SUPABASE HTTP ERROR:", exc.code)
-            print(body)
-            raise
-
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            resp.read()
+        sent += len(batch)
+        print("SYNC goszakup:", sent, "/", len(rows))
     return sent
+
+
+def tender_text(t):
+    return " ".join([
+        str(t.get("title") or ""),
+        str(t.get("description") or ""),
+        str(t.get("category") or ""),
+    ]).lower()
+
+
+def auto_match_profiles(cfg):
+    print("AUTO MATCH: start")
+
+    profiles = load_profiles(cfg)
+    tenders = rest_get(
+        cfg,
+        "tenders?select=id,source_code,title,description,category,is_active"
+        "&source_code=eq.goszakup&is_active=eq.true"
+    )
+    existing = rest_get(
+        cfg,
+        "client_tender_matches?select=profile_id,tender_id"
+    )
+    existing_pairs = {
+        (int(x["profile_id"]), int(x["tender_id"]))
+        for x in existing
+        if x.get("profile_id") is not None and x.get("tender_id") is not None
+    }
+
+    new_matches = []
+
+    for p in profiles:
+        if "goszakup" not in normalize_list(p.get("sources")):
+            continue
+
+        include_words = [x.lower() for x in normalize_list(p.get("include_keywords"))]
+        exclude_words = [x.lower() for x in normalize_list(p.get("exclude_keywords"))]
+
+        if not include_words:
+            continue
+
+        for t in tenders:
+            pair = (int(p["id"]), int(t["id"]))
+            if pair in existing_pairs:
+                continue
+
+            text = tender_text(t)
+
+            matched = [w for w in include_words if w and w in text]
+            excluded = [w for w in exclude_words if w and w in text]
+
+            if not matched or excluded:
+                continue
+
+            new_matches.append({
+                "client_id": p["client_id"],
+                "profile_id": p["id"],
+                "tender_id": t["id"],
+                "relevance_score": 100,
+                "matched_keyword": matched,
+                "match_reason": {
+                    "source": "goszakup",
+                    "include": matched,
+                    "exclude": [],
+                    "rule": "automatic keyword match",
+                },
+                "status": "new",
+            })
+
+    if not new_matches:
+        print("AUTO MATCH: no new matches")
+        return 0
+
+    inserted = 0
+    for start in range(0, len(new_matches), 100):
+        batch = new_matches[start:start + 100]
+        rest_post(
+            cfg,
+            "client_tender_matches?on_conflict=profile_id,tender_id",
+            batch,
+            prefer="resolution=ignore-duplicates,return=minimal",
+        )
+        inserted += len(batch)
+        print("AUTO MATCH:", inserted, "/", len(new_matches))
+
+    return inserted
 
 
 def main():
     print("=" * 72)
-    print("TENDER RADAR KZ COMMERCIAL — PROTOCOL 13B — GOSZAKUP")
-    print("Target schema: commercial")
+    print("TENDER RADAR KZ COMMERCIAL — GOSZAKUP + AUTO MATCH")
     print("=" * 72)
 
     cfg = get_config()
@@ -306,13 +378,16 @@ def main():
 
     print("Prepared rows:", len(rows))
     if not rows:
-        print("STOP: свежий набор пустой; старые записи не деактивируем.")
+        print("STOP: fresh set is empty.")
         return 0
 
     deactivate_existing_goszakup(cfg)
     sent = upload_rows(cfg, rows)
 
+    matches = auto_match_profiles(cfg)
+
     print("DONE. Synced:", sent)
+    print("DONE. New matches:", matches)
     return 0
 
 
