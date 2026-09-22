@@ -1,0 +1,27 @@
+name: Goszakup Commercial
+
+on:
+  workflow_dispatch:
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install requests pypdf
+
+      - name: Run Commercial Goszakup
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          GOSZAKUP_TOKEN: ${{ secrets.GOSZAKUP_TOKEN }}
+        run: python auto_collect_and_sync_commercial.py
