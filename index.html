@@ -132,7 +132,7 @@
 
     .plan-grid {
       display: grid;
-      grid-template-columns: repeat(5,1fr);
+      grid-template-columns: repeat(6,1fr);
       gap: 14px;
       margin-top: 15px;
     }
@@ -415,6 +415,46 @@
 
     .onboarding-status.waiting {
       color: #64748b;
+    }
+
+
+    .source-box {
+      margin-top: 14px;
+      padding: 14px;
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      background: #f8fafc;
+    }
+
+    .source-options {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 10px;
+    }
+
+    .source-option {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 9px 12px;
+      border: 1px solid #cbd5e1;
+      border-radius: 10px;
+      background: white;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .source-option input {
+      width: auto;
+      margin: 0;
+    }
+
+    .source-counter {
+      margin-top: 10px;
+      font-size: 13px;
+      color: #475569;
+      font-weight: bold;
     }
 
     @media(max-width:900px) {
@@ -709,6 +749,11 @@
         </div>
 
         <div class="plan-item">
+          <div class="plan-label">Источники</div>
+          <div class="plan-value" id="planSources">—</div>
+        </div>
+
+        <div class="plan-item">
           <div class="plan-label">Оплачено до</div>
           <div class="plan-value" id="planExpires">—</div>
         </div>
@@ -878,6 +923,11 @@
 
         <div id="excludeKeywords"></div>
 
+        <p>
+          <strong>Источники:</strong>
+        </p>
+        <div id="profileSources"></div>
+
         <div id="emptyProfileBox" class="empty-profile">
           <p>
             У вас пока нет профиля поиска. Создайте первый профиль —
@@ -936,8 +986,13 @@
         ></textarea>
 
         <div class="hint">
-          Можно оставить пустым. Источники по умолчанию:
-          goszakup и samruk.
+          Можно оставить пустым.
+        </div>
+
+        <label>Источники поиска</label>
+        <div class="source-box">
+          <div id="createSourceOptions" class="source-options"></div>
+          <div id="createSourceCounter" class="source-counter">Выбрано: 0 / —</div>
         </div>
 
         <div class="button-row">
@@ -1002,6 +1057,12 @@
 
         <div class="hint">
           Например: ремонт, обслуживание, заправка
+        </div>
+
+        <label>Источники поиска</label>
+        <div class="source-box">
+          <div id="editSourceOptions" class="source-options"></div>
+          <div id="editSourceCounter" class="source-counter">Выбрано: 0 / —</div>
         </div>
 
 
@@ -1073,6 +1134,7 @@ let currentProfileId = null;
 let currentProfile = null;
 let currentClient = null;
 let currentTelegramCount = 0;
+let availableSources = [];
 
 
 function showError(text) {
@@ -1267,6 +1329,124 @@ function updateOnboarding(profileCount, telegramCount) {
       "После создания профиля"
     );
   }
+}
+
+
+function sourceName(code) {
+  const item = availableSources.find(x => x.code === code);
+  return item ? item.name : code;
+}
+
+function renderProfileSources(values) {
+  tags(
+    "profileSources",
+    (values || []).map(sourceName)
+  );
+}
+
+function selectedSourceCodes(containerId) {
+  return Array
+    .from(
+      document.querySelectorAll(
+        "#" + containerId + ' input[type="checkbox"]:checked'
+      )
+    )
+    .map(x => x.value);
+}
+
+function updateSourceCounter(containerId, counterId) {
+  const count = selectedSourceCodes(containerId).length;
+  const limit =
+    currentClient &&
+    currentClient.source_limit !== null &&
+    currentClient.source_limit !== undefined
+      ? Number(currentClient.source_limit)
+      : null;
+
+  document
+    .getElementById(counterId)
+    .textContent =
+    "Выбрано: " +
+    count +
+    " / " +
+    (limit === null ? "—" : limit);
+}
+
+function renderSourceOptions(containerId, counterId, selectedValues) {
+  const box = document.getElementById(containerId);
+  if (!box) return;
+
+  const selected = new Set(selectedValues || []);
+  box.innerHTML = "";
+
+  availableSources.forEach(src => {
+    const label = document.createElement("label");
+    label.className = "source-option";
+
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.value = src.code;
+    input.checked = selected.has(src.code);
+
+    input.addEventListener("change", () => {
+      const limit =
+        currentClient &&
+        currentClient.source_limit !== null &&
+        currentClient.source_limit !== undefined
+          ? Number(currentClient.source_limit)
+          : null;
+
+      const chosen = selectedSourceCodes(containerId);
+
+      if (limit !== null && chosen.length > limit) {
+        input.checked = false;
+        showError(
+          "По вашему тарифу можно выбрать не более " +
+          limit +
+          " источников."
+        );
+      } else {
+        clearMessage();
+      }
+
+      updateSourceCounter(containerId, counterId);
+    });
+
+    const span = document.createElement("span");
+    span.textContent = src.name;
+
+    label.appendChild(input);
+    label.appendChild(span);
+    box.appendChild(label);
+  });
+
+  updateSourceCounter(containerId, counterId);
+}
+
+function validateSelectedSources(containerId) {
+  const values = selectedSourceCodes(containerId);
+  const limit =
+    currentClient &&
+    currentClient.source_limit !== null &&
+    currentClient.source_limit !== undefined
+      ? Number(currentClient.source_limit)
+      : null;
+
+  if (!values.length) {
+    showError("Выберите хотя бы один источник.");
+    return null;
+  }
+
+  if (limit !== null && values.length > limit) {
+    showError(
+      "По вашему тарифу можно выбрать не более " +
+      limit +
+      " источников."
+    );
+    return null;
+  }
+
+  return values;
 }
 
 
@@ -1647,6 +1827,7 @@ async function logout() {
   currentProfile = null;
   currentClient = null;
   currentTelegramCount = 0;
+  availableSources = [];
 
   document
     .getElementById("cabinet")
@@ -1893,6 +2074,17 @@ function showCreateProfile() {
     return;
   }
 
+  renderSourceOptions(
+    "createSourceOptions",
+    "createSourceCounter",
+    ["goszakup", "samruk"].filter(
+      code => availableSources.some(x => x.code === code)
+    ).slice(
+      0,
+      currentClient.source_limit ?? 999
+    )
+  );
+
   document
     .getElementById("profileCreate")
     .style.display = "block";
@@ -1974,6 +2166,15 @@ async function createProfile() {
         .value
     );
 
+  const sources =
+    validateSelectedSources(
+      "createSourceOptions"
+    );
+
+  if (!sources) {
+    return;
+  }
+
   if (!name) {
     showError("Введите название профиля.");
     return;
@@ -2022,7 +2223,8 @@ async function createProfile() {
         client_id: currentClientId,
         name: name,
         include_keywords: includeKeywords,
-        exclude_keywords: excludeKeywords
+        exclude_keywords: excludeKeywords,
+        sources: sources
       })
       .select()
       .single();
@@ -2053,6 +2255,10 @@ async function createProfile() {
     data.exclude_keywords
   );
 
+  renderProfileSources(
+    data.sources || []
+  );
+
   document
     .getElementById("profileCreate")
     .style.display = "none";
@@ -2080,6 +2286,16 @@ async function createProfile() {
     " / " +
     (
       currentClient.profile_limit ??
+      "—"
+    );
+
+  document
+    .getElementById("planSources")
+    .textContent =
+    sources.length +
+    " / " +
+    (
+      currentClient.source_limit ??
       "—"
     );
 
@@ -2130,6 +2346,12 @@ function toggleProfileEdit() {
     (currentProfile.exclude_keywords || [])
       .join(", ");
 
+
+  renderSourceOptions(
+    "editSourceOptions",
+    "editSourceCounter",
+    currentProfile.sources || []
+  );
 
   document
     .getElementById("profileEdit")
@@ -2206,6 +2428,15 @@ async function saveProfile() {
         .value
     );
 
+  const sources =
+    validateSelectedSources(
+      "editSourceOptions"
+    );
+
+  if (!sources) {
+    return;
+  }
+
 
   if (!name) {
 
@@ -2241,7 +2472,8 @@ async function saveProfile() {
       .update({
         name: name,
         include_keywords: includeKeywords,
-        exclude_keywords: excludeKeywords
+        exclude_keywords: excludeKeywords,
+        sources: sources
       })
       .eq(
         "id",
@@ -2281,6 +2513,20 @@ async function saveProfile() {
     "excludeKeywords",
     data.exclude_keywords
   );
+
+  renderProfileSources(
+    data.sources || []
+  );
+
+  document
+    .getElementById("planSources")
+    .textContent =
+    (data.sources || []).length +
+    " / " +
+    (
+      currentClient.source_limit ??
+      "—"
+    );
 
 
   cancelProfileEdit();
@@ -2359,6 +2605,22 @@ async function openCabinet(user) {
 
 
     currentClient = client;
+
+    const {
+      data: sourceRows,
+      error: sourceError
+    } =
+      await db
+        .from("sources")
+        .select("code, name, sort_order")
+        .eq("active", true)
+        .order("sort_order");
+
+    if (sourceError) {
+      throw sourceError;
+    }
+
+    availableSources = sourceRows || [];
 
 
     document
@@ -2480,6 +2742,20 @@ async function openCabinet(user) {
         currentProfile.exclude_keywords
       );
 
+      renderProfileSources(
+        currentProfile.sources || []
+      );
+
+      document
+        .getElementById("planSources")
+        .textContent =
+        (currentProfile.sources || []).length +
+        " / " +
+        (
+          client.source_limit ??
+          "—"
+        );
+
 
       document
         .getElementById("editProfileButton")
@@ -2523,6 +2799,17 @@ async function openCabinet(user) {
         "excludeKeywords",
         []
       );
+
+      renderProfileSources([]);
+
+      document
+        .getElementById("planSources")
+        .textContent =
+        "0 / " +
+        (
+          client.source_limit ??
+          "—"
+        );
 
 
       document
