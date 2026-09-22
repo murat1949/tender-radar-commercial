@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 Tender Radar KZ Commercial — Goszakup sync + automatic profile matching
-PROTOCOL 13B
+PROTOCOL 13B — AUTO MATCH REFRESH
 
 Flow:
 Goszakup -> commercial.tenders -> commercial.client_tender_matches
@@ -296,17 +296,7 @@ def auto_match_profiles(cfg):
         "tenders?select=id,source_code,title,description,category,is_active"
         "&source_code=eq.goszakup&is_active=eq.true"
     )
-    existing = rest_get(
-        cfg,
-        "client_tender_matches?select=profile_id,tender_id"
-    )
-    existing_pairs = {
-        (int(x["profile_id"]), int(x["tender_id"]))
-        for x in existing
-        if x.get("profile_id") is not None and x.get("tender_id") is not None
-    }
-
-    new_matches = []
+    matches_to_upsert = []
 
     for p in profiles:
         if "goszakup" not in normalize_list(p.get("sources")):
@@ -319,10 +309,6 @@ def auto_match_profiles(cfg):
             continue
 
         for t in tenders:
-            pair = (int(p["id"]), int(t["id"]))
-            if pair in existing_pairs:
-                continue
-
             text = tender_text(t)
 
             matched = [w for w in include_words if w and w in text]
@@ -331,7 +317,7 @@ def auto_match_profiles(cfg):
             if not matched or excluded:
                 continue
 
-            new_matches.append({
+            matches_to_upsert.append({
                 "client_id": p["client_id"],
                 "profile_id": p["id"],
                 "tender_id": t["id"],
@@ -346,23 +332,23 @@ def auto_match_profiles(cfg):
                 "status": "new",
             })
 
-    if not new_matches:
-        print("AUTO MATCH: no new matches")
+    if not matches_to_upsert:
+        print("AUTO MATCH: no qualifying matches")
         return 0
 
-    inserted = 0
-    for start in range(0, len(new_matches), 100):
-        batch = new_matches[start:start + 100]
+    synced = 0
+    for start in range(0, len(matches_to_upsert), 100):
+        batch = matches_to_upsert[start:start + 100]
         rest_post(
             cfg,
             "client_tender_matches?on_conflict=profile_id,tender_id",
             batch,
-            prefer="resolution=ignore-duplicates,return=minimal",
+            prefer="resolution=merge-duplicates,return=minimal",
         )
-        inserted += len(batch)
-        print("AUTO MATCH:", inserted, "/", len(new_matches))
+        synced += len(batch)
+        print("AUTO MATCH:", synced, "/", len(matches_to_upsert))
 
-    return inserted
+    return synced
 
 
 def main():
@@ -387,7 +373,7 @@ def main():
     matches = auto_match_profiles(cfg)
 
     print("DONE. Synced:", sent)
-    print("DONE. New matches:", matches)
+    print("DONE. Matches refreshed:", matches)
     return 0
 
 
