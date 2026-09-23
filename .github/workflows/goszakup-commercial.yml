@@ -3,7 +3,6 @@ name: Goszakup Commercial
 on:
   workflow_dispatch:
   schedule:
-    # Рабочий режим: один автоматический запуск в час.
     - cron: "0 * * * *"
 
 jobs:
@@ -22,6 +21,9 @@ jobs:
       - name: Install dependencies
         run: pip install requests pypdf
 
+      - name: Mark workflow start time
+        run: echo "RUN_STARTED_AT=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_ENV"
+
       - name: Collect and sync Goszakup Commercial
         env:
           GOSZAKUP_TOKEN: ${{ secrets.GOSZAKUP_TOKEN }}
@@ -29,9 +31,10 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: python auto_collect_and_sync_commercial.py
 
-      - name: Send new matches to Telegram
+      - name: Send only current-run matches to Telegram
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          RUN_STARTED_AT: ${{ env.RUN_STARTED_AT }}
         run: python telegram_notify_commercial.py
