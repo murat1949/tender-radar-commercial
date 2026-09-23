@@ -1,0 +1,17 @@
+name: Проверка расписания
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Тест: запуск каждые 5 минут
+    - cron: "*/5 * * * *"
+
+jobs:
+  test-schedule:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Проверка автоматического запуска
+        run: |
+          echo "Автоматический запуск сработал"
+          date -u
