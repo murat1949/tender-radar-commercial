@@ -2,6 +2,10 @@ name: Goszakup Commercial
 
 on:
   workflow_dispatch:
+  schedule:
+    # Автоматический запуск один раз в час, на 50-й минуте.
+    # GitHub использует UTC, но для ежечасового расписания важна именно минута.
+    - cron: "50 * * * *"
 
 jobs:
   run:
