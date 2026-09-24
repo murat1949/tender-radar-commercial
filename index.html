@@ -3176,11 +3176,13 @@ async function openCabinet(user) {
 
     } else {
 
-      const visibleMatches =
-        matches.slice(0,20);
+      // 14A.1: сначала берём запас последних совпадений,
+      // затем скрываем тендеры, у которых срок подачи уже прошёл.
+      const candidateMatches =
+        matches.slice(0,100);
 
       const tenderIds =
-        visibleMatches
+        candidateMatches
           .map(x => x.tender_id)
           .filter(Boolean);
 
@@ -3208,12 +3210,38 @@ async function openCabinet(user) {
             .map(x => [Number(x.id), x])
         );
 
+      const nowMs =
+        Date.now();
+
+      const isTenderActive =
+        (tender) => {
+
+          if (!tender || !tender.expires_at) {
+            return true;
+          }
+
+          const deadline =
+            new Date(tender.expires_at)
+              .getTime();
+
+          if (Number.isNaN(deadline)) {
+            return true;
+          }
+
+          return deadline >= nowMs;
+        };
+
       let rendered = 0;
+      let expiredHidden = 0;
 
       for (
         const match
-        of visibleMatches
+        of candidateMatches
       ) {
+
+        if (rendered >= 20) {
+          break;
+        }
 
         const tender =
           tenderMap.get(
@@ -3221,6 +3249,11 @@ async function openCabinet(user) {
           );
 
         if (!tender) {
+          continue;
+        }
+
+        if (!isTenderActive(tender)) {
+          expiredHidden += 1;
           continue;
         }
 
@@ -3410,14 +3443,14 @@ async function openCabinet(user) {
       }
 
       tenderListNote.textContent =
-        "Найдено: " +
+        "Найдено всего: " +
         matches.length +
-        ". Показано: " +
+        ". Показано актуальных: " +
         rendered +
         (
-          matches.length > 20
-            ? " последних совпадений."
-            : " совпадений."
+          expiredHidden > 0
+            ? ". Просроченные скрыты: " + expiredHidden + "."
+            : "."
         );
 
     }
