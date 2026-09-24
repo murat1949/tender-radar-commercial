@@ -3,11 +3,21 @@ name: Goszakup Commercial
 on:
   workflow_dispatch:
   schedule:
-    - cron: "17 * * * *"
+    # Два запуска в час для надежности GitHub scheduler.
+    # Повторы безопасны: база и Telegram дедуплицируются.
+    - cron: "17,47 * * * *"
+
+concurrency:
+  group: goszakup-commercial
+  cancel-in-progress: false
+
+permissions:
+  contents: read
 
 jobs:
   run:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
 
     steps:
       - name: Checkout
@@ -31,7 +41,7 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: python auto_collect_and_sync_commercial.py
 
-      - name: Send only current-run matches to Telegram
+      - name: Send current-run digest to Telegram
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
