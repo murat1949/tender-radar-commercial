@@ -198,8 +198,93 @@
     }
 
     .tender {
-      border-top: 1px solid #e5e7eb;
-      padding: 15px 0;
+      border: 1px solid #e2e8f0;
+      border-radius: 14px;
+      padding: 18px;
+      margin-top: 14px;
+      background: #ffffff;
+    }
+
+    .tender-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 14px;
+      flex-wrap: wrap;
+    }
+
+    .tender-title {
+      font-size: 17px;
+      font-weight: bold;
+      line-height: 1.4;
+      flex: 1 1 560px;
+    }
+
+    .tender-source {
+      display: inline-block;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: #eff6ff;
+      color: #1d4ed8;
+      font-size: 12px;
+      font-weight: bold;
+      white-space: nowrap;
+    }
+
+    .tender-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px 18px;
+      margin-top: 14px;
+    }
+
+    .tender-field {
+      font-size: 14px;
+      color: #334155;
+      line-height: 1.45;
+    }
+
+    .tender-field strong {
+      color: #0f172a;
+    }
+
+    .tender-match {
+      margin-top: 12px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      background: #f0fdf4;
+      color: #166534;
+      font-size: 14px;
+    }
+
+    .tender-actions {
+      margin-top: 14px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .tender-link {
+      display: inline-block;
+      padding: 10px 14px;
+      border-radius: 9px;
+      background: #0f172a;
+      color: white;
+      text-decoration: none;
+      font-weight: bold;
+      font-size: 14px;
+    }
+
+    .tender-link:hover {
+      background: #1e293b;
+    }
+
+    .tender-list-note {
+      color: #64748b;
+      font-size: 14px;
+      margin-top: -6px;
+      margin-bottom: 8px;
     }
 
     .edit-box {
@@ -473,6 +558,10 @@
       }
 
       .onboarding-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .tender-grid {
         grid-template-columns: 1fr;
       }
     }
@@ -1092,8 +1181,12 @@
     <div class="card">
 
       <h2>
-        Последние тендеры
+        Найденные тендеры
       </h2>
+
+      <div class="tender-list-note" id="tenderListNote">
+        Показываем реальные совпадения по вашему профилю поиска.
+      </div>
 
       <div id="tenders">
         Загрузка...
@@ -1219,6 +1312,80 @@ function formatDate(value) {
     "ru-RU"
   );
 
+}
+
+
+function formatDateTime(value) {
+
+  if (!value) {
+    return "—";
+  }
+
+  const d = new Date(value);
+
+  return d.toLocaleString(
+    "ru-RU",
+    {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit"
+    }
+  );
+
+}
+
+
+function formatMoney(value, currency) {
+
+  if (value === null || value === undefined || value === "") {
+    return "—";
+  }
+
+  const n = Number(value);
+
+  if (Number.isNaN(n)) {
+    return String(value);
+  }
+
+  return new Intl.NumberFormat(
+    "ru-RU",
+    {
+      maximumFractionDigits: 2
+    }
+  ).format(n) +
+  " " +
+  (currency || "KZT");
+
+}
+
+
+function normalizeMatchedKeywords(value) {
+
+  if (Array.isArray(value)) {
+    return value;
+  }
+
+  if (!value) {
+    return [];
+  }
+
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      if (Array.isArray(parsed)) {
+        return parsed;
+      }
+    } catch (_) {}
+
+    return value
+      .split(",")
+      .map(x => x.trim())
+      .filter(Boolean);
+  }
+
+  return [String(value)];
 }
 
 
@@ -2990,6 +3157,11 @@ async function openCabinet(user) {
         "tenders"
       );
 
+    const tenderListNote =
+      document.getElementById(
+        "tenderListNote"
+      );
+
 
     tenderBox.innerHTML = "";
 
@@ -2997,81 +3169,256 @@ async function openCabinet(user) {
     if (!matches.length) {
 
       tenderBox.textContent =
-        "Тендеров пока нет.";
+        "Подходящих тендеров пока нет.";
+
+      tenderListNote.textContent =
+        "Система продолжает мониторинг по вашему профилю поиска.";
 
     } else {
 
+      const visibleMatches =
+        matches.slice(0,20);
+
+      const tenderIds =
+        visibleMatches
+          .map(x => x.tender_id)
+          .filter(Boolean);
+
+      const {
+        data: tenderRows,
+        error: tenderRowsError
+      } =
+        await db
+          .from("tenders")
+          .select(
+            "id, source_code, source_tender_id, source_lot_id, public_url, title, customer_name, amount, currency, expires_at"
+          )
+          .in(
+            "id",
+            tenderIds
+          );
+
+      if (tenderRowsError) {
+        throw tenderRowsError;
+      }
+
+      const tenderMap =
+        new Map(
+          (tenderRows || [])
+            .map(x => [Number(x.id), x])
+        );
+
+      let rendered = 0;
+
       for (
         const match
-        of matches.slice(0,10)
+        of visibleMatches
       ) {
 
-        const {
-          data: tender,
-          error: tenderError
-        } =
-          await db
-            .from("tenders")
-            .select("*")
-            .eq(
-              "id",
-              match.tender_id
-            )
-            .single();
+        const tender =
+          tenderMap.get(
+            Number(match.tender_id)
+          );
 
-
-        if (
-          tenderError ||
-          !tender
-        ) {
+        if (!tender) {
           continue;
         }
 
+        rendered += 1;
+
+        const keywords =
+          normalizeMatchedKeywords(
+            match.matched_keyword
+          );
 
         const div =
           document.createElement(
             "div"
           );
 
-
         div.className =
           "tender";
 
+        const head =
+          document.createElement(
+            "div"
+          );
 
-        div.innerHTML = `
-          <strong>
-            ${tender.title || "Без названия"}
-          </strong>
+        head.className =
+          "tender-head";
 
-          <p>
-            Источник:
-            ${tender.source_code || "—"}
-          </p>
+        const title =
+          document.createElement(
+            "div"
+          );
 
-          <p>
-            Лот:
-            ${tender.source_lot_id || "—"}
-          </p>
+        title.className =
+          "tender-title";
 
-          <p>
-            Совпадение:
-            ${
-              (match.matched_keyword || [])
-                .join(", ") || "—"
-            }
-          </p>
+        title.textContent =
+          tender.title ||
+          "Тендер без названия";
 
-          <span class="status">
-            ${match.status || "—"}
-          </span>
-        `;
+        const source =
+          document.createElement(
+            "span"
+          );
 
+        source.className =
+          "tender-source";
 
-        tenderBox.appendChild(
-          div
-        );
+        source.textContent =
+          sourceName(
+            tender.source_code
+          ) ||
+          tender.source_code ||
+          "Источник";
 
+        head.appendChild(title);
+        head.appendChild(source);
+        div.appendChild(head);
+
+        const grid =
+          document.createElement(
+            "div"
+          );
+
+        grid.className =
+          "tender-grid";
+
+        const fields = [
+          [
+            "Заказчик",
+            tender.customer_name || "—"
+          ],
+          [
+            "Сумма",
+            formatMoney(
+              tender.amount,
+              tender.currency
+            )
+          ],
+          [
+            "Срок подачи",
+            formatDateTime(
+              tender.expires_at
+            )
+          ],
+          [
+            "Лот",
+            tender.source_lot_id || "—"
+          ]
+        ];
+
+        fields.forEach(([label, value]) => {
+          const field =
+            document.createElement(
+              "div"
+            );
+
+          field.className =
+            "tender-field";
+
+          const strong =
+            document.createElement(
+              "strong"
+            );
+
+          strong.textContent =
+            label + ": ";
+
+          field.appendChild(strong);
+          field.appendChild(
+            document.createTextNode(
+              value
+            )
+          );
+
+          grid.appendChild(field);
+        });
+
+        div.appendChild(grid);
+
+        const matchBox =
+          document.createElement(
+            "div"
+          );
+
+        matchBox.className =
+          "tender-match";
+
+        matchBox.textContent =
+          "Совпадение: " +
+          (
+            keywords.join(", ") ||
+            "—"
+          );
+
+        div.appendChild(matchBox);
+
+        const actions =
+          document.createElement(
+            "div"
+          );
+
+        actions.className =
+          "tender-actions";
+
+        const foundAt =
+          document.createElement(
+            "span"
+          );
+
+        foundAt.className =
+          "tender-field";
+
+        foundAt.textContent =
+          "Найдено: " +
+          formatDateTime(
+            match.matched_at
+          );
+
+        actions.appendChild(foundAt);
+
+        if (tender.public_url) {
+          const link =
+            document.createElement(
+              "a"
+            );
+
+          link.className =
+            "tender-link";
+
+          link.href =
+            tender.public_url;
+
+          link.target =
+            "_blank";
+
+          link.rel =
+            "noopener noreferrer";
+
+          link.textContent =
+            "Открыть тендер";
+
+          actions.appendChild(link);
+        }
+
+        div.appendChild(actions);
+
+        tenderBox.appendChild(div);
       }
+
+      tenderListNote.textContent =
+        "Найдено: " +
+        matches.length +
+        ". Показано: " +
+        rendered +
+        (
+          matches.length > 20
+            ? " последних совпадений."
+            : " совпадений."
+        );
 
     }
 
