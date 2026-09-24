@@ -3413,7 +3413,20 @@ async function openCabinet(user) {
 
         actions.appendChild(foundAt);
 
-        if (tender.public_url) {
+        const officialTenderUrl =
+          tender.source_code === "goszakup" &&
+          tender.source_tender_id
+            ? "https://www.goszakup.gov.kz/ru/announce/index/" +
+              encodeURIComponent(
+                String(tender.source_tender_id).trim()
+              )
+            : (
+                tender.public_url
+                  ? String(tender.public_url).trim()
+                  : ""
+              );
+
+        if (officialTenderUrl) {
           const link =
             document.createElement(
               "a"
@@ -3423,14 +3436,10 @@ async function openCabinet(user) {
             "tender-link";
 
           link.href =
-            tender.public_url;
+            officialTenderUrl;
 
-          link.target =
-            "_blank";
-
-          link.rel =
-            "noopener noreferrer";
-
+          // Для старых браузеров надежнее открывать официальный
+          // тендер в этой же вкладке, без target="_blank".
           link.textContent =
             "Открыть тендер";
 
