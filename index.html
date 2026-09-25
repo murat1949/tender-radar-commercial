@@ -17,9 +17,10 @@
     }
 
     header {
-      background: #0f172a;
+      background: linear-gradient(135deg, #0f2747 0%, #154f82 55%, #1d6fa8 100%);
       color: white;
       padding: 20px 30px;
+      box-shadow: 0 3px 14px rgba(15, 59, 102, 0.18);
     }
 
     header h1 {
@@ -118,10 +119,30 @@
     }
 
     .stat {
-      background: white;
+      background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+      border: 1px solid #dbeafe;
       border-radius: 14px;
       padding: 20px;
-      box-shadow: 0 3px 12px rgba(0,0,0,.08);
+      box-shadow: 0 4px 14px rgba(15, 59, 102, 0.07);
+    }
+
+    .stat .value {
+      color: #0f4d80;
+    }
+
+    .cabinet-summary {
+      border: 1px solid #dbeafe;
+      background: linear-gradient(135deg, #ffffff 0%, #f7fbff 100%);
+      box-shadow: 0 7px 20px rgba(15, 59, 102, 0.08);
+    }
+
+    .cabinet-summary h2 {
+      color: #0f3b66;
+    }
+
+    .plan-item {
+      background: #f8fbff;
+      border: 1px solid #dbeafe;
     }
 
     .value {
@@ -527,6 +548,25 @@
       background: #f8fafc;
       border: 1px dashed #cbd5e1;
       border-radius: 12px;
+    }
+
+
+    .radar-more-wrap {
+      text-align: center;
+      margin-top: 18px;
+    }
+
+    .radar-more-btn {
+      background: #eaf3ff;
+      color: #155e9a;
+      border: 1px solid #93c5fd;
+      border-radius: 10px;
+      padding: 10px 22px;
+      font-weight: bold;
+    }
+
+    .radar-more-btn:hover {
+      background: #dbeafe;
     }
 
     @media(max-width:1050px) {
@@ -1009,7 +1049,7 @@
 
   <div id="cabinet">
 
-    <div class="card">
+    <div class="card cabinet-summary">
 
       <div class="top-row">
 
@@ -1056,13 +1096,13 @@
     <div class="stats">
 
       <div class="stat">
-        Новых тендеров
-        <div class="value" id="newCount">0</div>
+        Найдено всего
+        <div class="value" id="totalCount">0</div>
       </div>
 
       <div class="stat">
-        Найдено всего
-        <div class="value" id="totalCount">0</div>
+        Актуальных
+        <div class="value" id="newCount">0</div>
       </div>
 
       <div class="stat">
@@ -1492,10 +1532,10 @@
             id="radarSearch"
             type="text"
             placeholder="Поиск: заказчик, название, лот, ключевое слово"
-            oninput="radarApplyFilters()"
+            oninput="radarApplyFilters(true)"
           >
 
-          <select id="radarSource" onchange="radarApplyFilters()">
+          <select id="radarSource" onchange="radarApplyFilters(true)">
             <option value="all">Все источники</option>
             <option value="goszakup">Госзакуп</option>
             <option value="samruk">Самрук-Казына</option>
@@ -1507,10 +1547,10 @@
             min="0"
             step="1000"
             placeholder="Сумма от, ₸"
-            oninput="radarApplyFilters()"
+            oninput="radarApplyFilters(true)"
           >
 
-          <select id="radarSort" onchange="radarApplyFilters()">
+          <select id="radarSort" onchange="radarApplyFilters(true)">
             <option value="deadline">Сначала срочные</option>
             <option value="amount_desc">Сумма: по убыванию</option>
             <option value="newest">Сначала новые</option>
@@ -1523,6 +1563,17 @@
 
         <div id="tenders">
           Загрузка...
+        </div>
+
+        <div class="radar-more-wrap">
+          <button
+            id="radarMoreBtn"
+            class="radar-more-btn"
+            onclick="radarShowMore()"
+            style="display:none"
+          >
+            Показать ещё
+          </button>
         </div>
 
       </div>
@@ -1566,6 +1617,8 @@ let currentClient = null;
 let radarTenderItems = [];
 let radarPeriod = "all";
 let radarExpiredHidden = 0;
+let radarVisibleLimit = 6;
+const radarPageSize = 6;
 
 function radarDaysLeft(deadlineMs) {
 
@@ -1616,6 +1669,9 @@ function radarSetPeriod(period) {
 
   radarPeriod =
     period || "all";
+
+  radarVisibleLimit =
+    radarPageSize;
 
   document
     .querySelectorAll(
@@ -2042,7 +2098,22 @@ function radarBuildTenderCard(item) {
 
 }
 
-function radarApplyFilters() {
+function radarShowMore() {
+
+  radarVisibleLimit +=
+    radarPageSize;
+
+  radarApplyFilters(false);
+
+}
+
+
+function radarApplyFilters(resetLimit) {
+
+  if (resetLimit === true) {
+    radarVisibleLimit =
+      radarPageSize;
+  }
 
   const box =
     document.getElementById(
@@ -2215,8 +2286,17 @@ function radarApplyFilters() {
 
   } else {
 
+    const visibleCount =
+      Math.min(
+        items.length,
+        radarVisibleLimit
+      );
+
     items
-      .slice(0, 30)
+      .slice(
+        0,
+        visibleCount
+      )
       .forEach(
         item => {
           box.appendChild(
@@ -2229,12 +2309,45 @@ function radarApplyFilters() {
 
   }
 
-  note.textContent =
-    "Показано: " +
+  const moreBtn =
+    document.getElementById(
+      "radarMoreBtn"
+    );
+
+  const shownCount =
     Math.min(
       items.length,
-      30
-    ) +
+      radarVisibleLimit
+    );
+
+  if (moreBtn) {
+
+    if (shownCount < items.length) {
+
+      const remaining =
+        items.length -
+        shownCount;
+
+      moreBtn.style.display =
+        "inline-block";
+
+      moreBtn.textContent =
+        "Показать ещё (" +
+        remaining +
+        ")";
+
+    } else {
+
+      moreBtn.style.display =
+        "none";
+
+    }
+
+  }
+
+  note.textContent =
+    "Показано: " +
+    shownCount +
     " из " +
     radarTenderItems.length +
     " актуальных." +
@@ -4202,10 +4315,7 @@ async function openCabinet(user) {
 
     document
       .getElementById("newCount")
-      .textContent =
-      matches.filter(
-        x => x.status === "new"
-      ).length;
+      .textContent = 0;
 
 
     const tenderBox =
@@ -4226,6 +4336,13 @@ async function openCabinet(user) {
 
       radarTenderItems = [];
       radarExpiredHidden = 0;
+
+      document
+        .getElementById("newCount")
+        .textContent = 0;
+
+      radarVisibleLimit =
+        radarPageSize;
 
       tenderListNote.textContent =
         "Система продолжает мониторинг по вашему профилю поиска.";
@@ -4343,8 +4460,16 @@ async function openCabinet(user) {
         }
       );
 
+      document
+        .getElementById("newCount")
+        .textContent =
+        radarTenderItems.length;
+
+      radarVisibleLimit =
+        radarPageSize;
+
       radarUpdateKpis();
-      radarApplyFilters();
+      radarApplyFilters(false);
 
     }
 
