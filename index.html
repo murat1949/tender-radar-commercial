@@ -540,6 +540,90 @@
       background: #0f4d80;
     }
 
+
+    /* ===== Protocol 14C: work status + favorite ===== */
+
+    .tender-workbar {
+      margin-top: 11px;
+      padding-top: 10px;
+      border-top: 1px solid #e2e8f0;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .tender-status-select {
+      width: 100%;
+      min-height: 36px;
+      border: 1px solid #cbd5e1;
+      border-radius: 9px;
+      background: #ffffff;
+      color: #0f172a;
+      padding: 7px 9px;
+      font-size: 12px;
+      font-weight: 600;
+      box-sizing: border-box;
+    }
+
+    .tender-status-select:disabled {
+      opacity: .65;
+      cursor: wait;
+    }
+
+    .favorite-btn {
+      min-height: 36px;
+      border: 1px solid #bfdbfe;
+      border-radius: 9px;
+      background: #eff6ff;
+      color: #155e9a;
+      padding: 7px 10px;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .favorite-btn:hover {
+      background: #dbeafe;
+    }
+
+    .favorite-btn.active {
+      background: #fff7ed;
+      border-color: #fdba74;
+      color: #c2410c;
+    }
+
+    .favorite-btn:disabled {
+      opacity: .65;
+      cursor: wait;
+    }
+
+    .work-status-note {
+      grid-column: 1 / -1;
+      min-height: 16px;
+      color: #64748b;
+      font-size: 11px;
+    }
+
+    .work-status-note.ok {
+      color: #15803d;
+    }
+
+    .work-status-note.error {
+      color: #b91c1c;
+    }
+
+    @media(max-width:560px) {
+      .tender-workbar {
+        grid-template-columns: 1fr;
+      }
+
+      .favorite-btn {
+        width: 100%;
+      }
+    }
+
     .radar-empty {
       grid-column: 1 / -1;
       padding: 30px;
@@ -1818,6 +1902,241 @@ function radarMatchesPeriod(item) {
 
 }
 
+
+const tenderStatusLabels = {
+  new: "Новый",
+  viewed: "Просмотрен",
+  interested: "Интересен",
+  in_work: "В работу",
+  rejected: "Не подходит"
+};
+
+function tenderStatusLabel(value) {
+  return tenderStatusLabels[value] || "Новый";
+}
+
+function findRadarItemByMatchId(matchId) {
+  return radarTenderItems.find(
+    item => Number(item.match.id) === Number(matchId)
+  ) || null;
+}
+
+function setTenderWorkNote(matchId, message, kind) {
+
+  const el =
+    document.getElementById(
+      "workNote_" + matchId
+    );
+
+  if (!el) {
+    return;
+  }
+
+  el.className =
+    "work-status-note" +
+    (
+      kind
+        ? " " + kind
+        : ""
+    );
+
+  el.textContent =
+    message || "";
+
+}
+
+async function updateTenderWorkStatus(matchId, newStatus) {
+
+  if (!tenderStatusLabels[newStatus]) {
+    return;
+  }
+
+  const item =
+    findRadarItemByMatchId(matchId);
+
+  if (!item) {
+    return;
+  }
+
+  const select =
+    document.getElementById(
+      "statusSelect_" + matchId
+    );
+
+  const previous =
+    item.match.status || "new";
+
+  if (select) {
+    select.disabled = true;
+  }
+
+  setTenderWorkNote(
+    matchId,
+    "Сохраняем статус…",
+    ""
+  );
+
+  const {
+    error
+  } =
+    await db
+      .from("client_tender_matches")
+      .update({
+        status: newStatus,
+        updated_at:
+          new Date().toISOString()
+      })
+      .eq(
+        "id",
+        matchId
+      )
+      .eq(
+        "client_id",
+        currentClientId
+      );
+
+  if (error) {
+
+    if (select) {
+      select.value =
+        previous;
+      select.disabled =
+        false;
+    }
+
+    setTenderWorkNote(
+      matchId,
+      "Не удалось сохранить статус.",
+      "error"
+    );
+
+    console.error(
+      "14C status update error:",
+      error
+    );
+
+    return;
+  }
+
+  item.match.status =
+    newStatus;
+
+  if (select) {
+    select.disabled =
+      false;
+  }
+
+  setTenderWorkNote(
+    matchId,
+    "Сохранено: " +
+      tenderStatusLabel(newStatus),
+    "ok"
+  );
+
+}
+
+async function toggleTenderFavorite(matchId) {
+
+  const item =
+    findRadarItemByMatchId(matchId);
+
+  if (!item) {
+    return;
+  }
+
+  const button =
+    document.getElementById(
+      "favoriteBtn_" + matchId
+    );
+
+  const nextValue =
+    !Boolean(
+      item.match.is_favorite
+    );
+
+  if (button) {
+    button.disabled =
+      true;
+  }
+
+  setTenderWorkNote(
+    matchId,
+    nextValue
+      ? "Добавляем в избранное…"
+      : "Убираем из избранного…",
+    ""
+  );
+
+  const {
+    error
+  } =
+    await db
+      .from("client_tender_matches")
+      .update({
+        is_favorite: nextValue,
+        updated_at:
+          new Date().toISOString()
+      })
+      .eq(
+        "id",
+        matchId
+      )
+      .eq(
+        "client_id",
+        currentClientId
+      );
+
+  if (error) {
+
+    if (button) {
+      button.disabled =
+        false;
+    }
+
+    setTenderWorkNote(
+      matchId,
+      "Не удалось изменить избранное.",
+      "error"
+    );
+
+    console.error(
+      "14C favorite update error:",
+      error
+    );
+
+    return;
+  }
+
+  item.match.is_favorite =
+    nextValue;
+
+  if (button) {
+
+    button.disabled =
+      false;
+
+    button.classList.toggle(
+      "active",
+      nextValue
+    );
+
+    button.textContent =
+      nextValue
+        ? "★ Избранное"
+        : "☆ Избранное";
+  }
+
+  setTenderWorkNote(
+    matchId,
+    nextValue
+      ? "Добавлено в избранное."
+      : "Удалено из избранного.",
+    "ok"
+  );
+
+}
+
+
 function radarBuildTenderCard(item) {
 
   const tender =
@@ -2007,6 +2326,133 @@ function radarBuildTenderCard(item) {
     );
 
   div.appendChild(matchBox);
+
+  const workbar =
+    document.createElement(
+      "div"
+    );
+
+  workbar.className =
+    "tender-workbar";
+
+  const statusSelect =
+    document.createElement(
+      "select"
+    );
+
+  statusSelect.className =
+    "tender-status-select";
+
+  statusSelect.id =
+    "statusSelect_" +
+    match.id;
+
+  [
+    ["new", "Новый"],
+    ["viewed", "Просмотрен"],
+    ["interested", "Интересен"],
+    ["in_work", "В работу"],
+    ["rejected", "Не подходит"]
+  ].forEach(
+    ([value, label]) => {
+
+      const option =
+        document.createElement(
+          "option"
+        );
+
+      option.value =
+        value;
+
+      option.textContent =
+        "Статус: " + label;
+
+      statusSelect.appendChild(
+        option
+      );
+
+    }
+  );
+
+  statusSelect.value =
+    match.status || "new";
+
+  statusSelect.addEventListener(
+    "change",
+    event => {
+      updateTenderWorkStatus(
+        match.id,
+        event.target.value
+      );
+    }
+  );
+
+  const favoriteBtn =
+    document.createElement(
+      "button"
+    );
+
+  favoriteBtn.type =
+    "button";
+
+  favoriteBtn.id =
+    "favoriteBtn_" +
+    match.id;
+
+  favoriteBtn.className =
+    "favorite-btn" +
+    (
+      match.is_favorite
+        ? " active"
+        : ""
+    );
+
+  favoriteBtn.textContent =
+    match.is_favorite
+      ? "★ Избранное"
+      : "☆ Избранное";
+
+  favoriteBtn.addEventListener(
+    "click",
+    () => {
+      toggleTenderFavorite(
+        match.id
+      );
+    }
+  );
+
+  const workNote =
+    document.createElement(
+      "div"
+    );
+
+  workNote.id =
+    "workNote_" +
+    match.id;
+
+  workNote.className =
+    "work-status-note";
+
+  workNote.textContent =
+    match.is_favorite
+      ? "Отмечено как избранное."
+      : "";
+
+  workbar.appendChild(
+    statusSelect
+  );
+
+  workbar.appendChild(
+    favoriteBtn
+  );
+
+  workbar.appendChild(
+    workNote
+  );
+
+  div.appendChild(
+    workbar
+  );
 
   const actions =
     document.createElement(
