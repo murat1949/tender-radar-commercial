@@ -1337,6 +1337,41 @@ function formatDateTime(value) {
 }
 
 
+function formatGoszakupDateTime(value) {
+
+  if (!value) {
+    return "—";
+  }
+
+  const d = new Date(value);
+
+  if (Number.isNaN(d.getTime())) {
+    return "—";
+  }
+
+  // Госзакуп хранит/показывает официальное время Казахстана UTC+5.
+  // Не используем часовой пояс Windows, чтобы старые настройки ПК
+  // не добавляли лишний час.
+  const kz =
+    new Date(
+      d.getTime() +
+      5 * 60 * 60 * 1000
+    );
+
+  const pad =
+    n => String(n).padStart(2, "0");
+
+  return (
+    pad(kz.getUTCDate()) + "." +
+    pad(kz.getUTCMonth() + 1) + "." +
+    kz.getUTCFullYear() + ", " +
+    pad(kz.getUTCHours()) + ":" +
+    pad(kz.getUTCMinutes())
+  );
+
+}
+
+
 function formatMoney(value, currency) {
 
   if (value === null || value === undefined || value === "") {
@@ -3193,7 +3228,7 @@ async function openCabinet(user) {
         await db
           .from("tenders")
           .select(
-            "id, source_code, source_tender_id, source_lot_id, public_url, title, customer_name, amount, currency, expires_at"
+            "id, source_code, source_tender_id, source_lot_id, public_url, title, customer_name, amount, currency, expires_at, raw"
           )
           .in(
             "id",
@@ -3333,13 +3368,25 @@ async function openCabinet(user) {
           ],
           [
             "Срок подачи",
-            formatDateTime(
-              tender.expires_at
-            )
+            tender.source_code === "goszakup"
+              ? formatGoszakupDateTime(
+                  tender.expires_at
+                )
+              : formatDateTime(
+                  tender.expires_at
+                )
           ],
           [
             "Лот",
-            tender.source_lot_id || "—"
+            (
+              tender.raw &&
+              tender.raw.lot_number
+            )
+              ? tender.raw.lot_number
+              : (
+                  tender.source_lot_id ||
+                  "—"
+                )
           ]
         ];
 
