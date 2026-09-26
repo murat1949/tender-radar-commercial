@@ -1300,6 +1300,19 @@ def collect(driver):
             search_url = lot_search_url(keyword, page)
             print("  PAGE:", page, search_url)
 
+            # ВАЖНО ДЛЯ SAMRUK SPA:
+            # при смене ключевого слова URL меняется быстрее, чем DOM.
+            # Из-за этого Selenium мог снять карточки предыдущего запроса
+            # (например SEARCH LOTS: спецобувь, а карточки ещё "Чернила").
+            # Для первой страницы каждого нового keyword делаем полностью
+            # свежую загрузку приложения, чтобы старый DOM не использовался.
+            if page == 1:
+                try:
+                    driver.get("about:blank")
+                    time.sleep(0.25)
+                except Exception:
+                    pass
+
             driver.get(search_url)
             WebDriverWait(driver, WAIT_SECONDS).until(
                 EC.presence_of_element_located((By.TAG_NAME, "body"))
@@ -1450,6 +1463,7 @@ def main():
     print("ENTITY LEVEL: LOT")
     print("DETAIL MODE: FRESH PAGE PER ACTIVE LOT + EXACT DEADLINE + TECHSPEC")
     print("MODE: READ ONLY, NO SUPABASE WRITE")
+    print("SPA FIX: fresh reload for every new keyword")
     print("COMMERCIAL KEYWORDS:", ", ".join(KEYWORDS))
     print("=" * 78)
 
