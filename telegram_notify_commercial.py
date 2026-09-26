@@ -3,13 +3,17 @@
 Tender Radar KZ Commercial — Telegram DIGEST
 
 Правила:
-1) Берём только совпадения текущего запуска (matched_at >= RUN_STARTED_AT).
+1) В обычном режиме берём только совпадения текущего запуска
+   (matched_at >= RUN_STARTED_AT).
 2) Работаем только с active=true в commercial.telegram_destinations.
 3) На каждого активного клиента отправляем ОДНО сообщение-дайджест.
 4) В сообщении показываем максимум 5 новых тендеров.
 5) Если новых больше — пишем, сколько ещё доступно в кабинете.
-6) После успешной отправки помечаем ВСЕ новые тендеры клиента как sent,
-   чтобы они не пришли повторно в следующем запуске.
+6) После успешной отправки помечаем отправленные тендеры как sent,
+   чтобы они не пришли повторно.
+7) Если Telegram-направление подключено впервые и в текущем запуске
+   новых совпадений нет, отправляем до 5 последних подходящих тендеров,
+   которые ещё не отправлялись в это Telegram-направление.
 """
 
 import os
@@ -230,8 +234,7 @@ def main():
 
     print("NEW MATCHES THIS RUN:", len(current))
     if not current:
-        print("No current-run matches; nothing sent.")
-        return 0
+        print("No current-run matches; checking first-time Telegram destinations.")
 
     existing = rest_get(
         cfg,
@@ -244,8 +247,54 @@ def main():
         for r in existing
         if r.get("status") == "sent"
     }
+    sent_destinations = {
+        int(r["destination_id"])
+        for r in existing
+        if r.get("status") == "sent"
+    }
 
-    ids = sorted({int(m["tender_id"]) for m in current})
+    # Для впервые подключённого Telegram, если в текущем запуске
+    # ничего нового нет, заранее подбираем до MAX_ITEMS последних
+    # подходящих тендеров этого клиента, которые ещё не отправлялись.
+    first_digest_matches = {}
+    for d in destinations:
+        if d.get("only_urgent"):
+            continue
+
+        did = int(d["id"])
+        cid = int(d["client_id"])
+
+        current_unsent = [
+            m for m in current
+            if int(m["client_id"]) == cid
+            and (did, int(m["tender_id"])) not in already
+        ]
+
+        if current_unsent or did in sent_destinations:
+            continue
+
+        fallback = []
+        for m in all_matches:
+            if int(m["client_id"]) != cid:
+                continue
+            if (did, int(m["tender_id"])) in already:
+                continue
+            fallback.append(m)
+            if len(fallback) >= MAX_ITEMS:
+                break
+
+        if fallback:
+            first_digest_matches[did] = fallback
+            print(
+                f"CLIENT {cid}: first Telegram digest will use "
+                f"{len(fallback)} latest unsent matches."
+            )
+
+    candidate_matches = list(current)
+    for rows in first_digest_matches.values():
+        candidate_matches.extend(rows)
+
+    ids = sorted({int(m["tender_id"]) for m in candidate_matches})
     tenders = {}
 
     for start in range(0, len(ids), 100):
@@ -278,8 +327,11 @@ def main():
                 continue
             client_matches.append(m)
 
+        if not client_matches and did in first_digest_matches:
+            client_matches = first_digest_matches[did]
+
         if not client_matches:
-            print(f"CLIENT {cid}: no unsent current-run matches.")
+            print(f"CLIENT {cid}: no unsent matches to send.")
             continue
 
         try:
