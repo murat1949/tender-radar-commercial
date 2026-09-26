@@ -308,6 +308,47 @@ def tender_text(t):
     return " ".join(parts).lower()
 
 
+def flexible_exclude_hit(text, word):
+    """
+    Более устойчивое исключение для русских словоформ.
+
+    Пример:
+      профиль исключает "обслуживание"
+      тендер содержит "обслуживанию"
+      -> считаем совпадением по основе "обслуживан".
+
+    Сначала проверяем обычное вхождение целого слова/фразы.
+    Затем для одного слова пробуем убрать типичное русское окончание.
+    """
+    word = str(word or "").strip().lower()
+    if not word:
+        return False
+
+    if word in text:
+        return True
+
+    # Для фраз не делаем агрессивное усечение: слишком велик риск ложных совпадений.
+    if " " in word:
+        return False
+
+    endings = (
+        "иями", "ями", "ами",
+        "ого", "ему", "ому", "ыми", "ими",
+        "ия", "ие", "ий", "ый", "ая", "ое",
+        "ой", "ей", "ом", "ем",
+        "ка",
+        "а", "я", "ы", "и", "е", "у", "ю",
+    )
+
+    for ending in endings:
+        if word.endswith(ending):
+            stem = word[:-len(ending)]
+            if len(stem) >= 5 and stem in text:
+                return True
+
+    return False
+
+
 def auto_match_profiles(cfg, profiles):
     print("AUTO MATCH SAMRUK: start")
 
@@ -338,9 +379,17 @@ def auto_match_profiles(cfg, profiles):
         for t in tenders:
             text = tender_text(t)
             matched = [w for w in include_words if w and w in text]
-            excluded = [w for w in exclude_words if w and w in text]
+            excluded = [
+                w for w in exclude_words
+                if flexible_exclude_hit(text, w)
+            ]
 
             if not matched or excluded:
+                if matched and excluded:
+                    print(
+                        f"EXCLUDED: profile={p['id']} tender={t['id']} "
+                        f"exclude={excluded}"
+                    )
                 continue
 
             matches_to_upsert.append({
@@ -382,6 +431,7 @@ def main():
     print("TENDER RADAR KZ COMMERCIAL — SAMRUK -> SUPABASE TEST SYNC")
     print("GOSZAKUP UNCHANGED • TELEGRAM NOT STARTED")
     print("SCHEMA FIX: commercial.tenders = 24 columns, no status_code")
+    print("FILTER FIX: flexible Russian exclude wordforms enabled")
     print("=" * 72)
 
     cfg = get_config()
