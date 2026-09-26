@@ -11,9 +11,11 @@ Tender Radar KZ Commercial — Telegram DIGEST
 5) Если новых больше — пишем, сколько ещё доступно в кабинете.
 6) После успешной отправки помечаем отправленные тендеры как sent,
    чтобы они не пришли повторно.
-7) Если Telegram-направление подключено впервые и в текущем запуске
-   новых совпадений нет, отправляем до 5 последних подходящих тендеров,
-   которые ещё не отправлялись в это Telegram-направление.
+7) Если в текущем запуске новых совпадений нет, допускается
+   догоняющая отправка: до 5 последних неотправленных совпадений,
+   появившихся после последней успешной Telegram-отправки.
+   Для нового Telegram без истории успешных отправок берём до 5
+   последних неотправленных подходящих тендеров.
 """
 
 import os
@@ -239,7 +241,7 @@ def main():
     existing = rest_get(
         cfg,
         "notifications_sent"
-        "?select=destination_id,tender_id,status,channel"
+        "?select=destination_id,tender_id,status,channel,sent_at"
         "&channel=eq.telegram"
     )
     already = {
@@ -247,16 +249,27 @@ def main():
         for r in existing
         if r.get("status") == "sent"
     }
-    sent_destinations = {
-        int(r["destination_id"])
-        for r in existing
-        if r.get("status") == "sent"
-    }
 
-    # Для впервые подключённого Telegram, если в текущем запуске
-    # ничего нового нет, заранее подбираем до MAX_ITEMS последних
-    # подходящих тендеров этого клиента, которые ещё не отправлялись.
-    first_digest_matches = {}
+    # Последняя УСПЕШНАЯ отправка для каждого Telegram-направления.
+    # Записи status=error здесь не учитываются.
+    last_sent_by_destination = {}
+    for r in existing:
+        if r.get("status") != "sent" or not r.get("sent_at"):
+            continue
+        did = int(r["destination_id"])
+        dt = parse_dt(r.get("sent_at"))
+        if not dt:
+            continue
+        prev = last_sent_by_destination.get(did)
+        if prev is None or dt > prev:
+            last_sent_by_destination[did] = dt
+
+    # Если в текущем запуске ничего нового для клиента нет,
+    # догоняем до MAX_ITEMS последних НЕОТПРАВЛЕННЫХ совпадений,
+    # появившихся ПОСЛЕ последней успешной отправки.
+    # Для совершенно нового Telegram без успешных отправок
+    # берём до MAX_ITEMS последних неотправленных совпадений.
+    catchup_matches = {}
     for d in destinations:
         if d.get("only_urgent"):
             continue
@@ -270,28 +283,43 @@ def main():
             and (did, int(m["tender_id"])) not in already
         ]
 
-        if current_unsent or did in sent_destinations:
+        if current_unsent:
             continue
 
+        last_sent = last_sent_by_destination.get(did)
         fallback = []
+
         for m in all_matches:
             if int(m["client_id"]) != cid:
                 continue
             if (did, int(m["tender_id"])) in already:
                 continue
+
+            matched_dt = parse_dt(m.get("matched_at"))
+            if last_sent is not None:
+                if not matched_dt or matched_dt <= last_sent:
+                    continue
+
             fallback.append(m)
             if len(fallback) >= MAX_ITEMS:
                 break
 
         if fallback:
-            first_digest_matches[did] = fallback
-            print(
-                f"CLIENT {cid}: first Telegram digest will use "
-                f"{len(fallback)} latest unsent matches."
-            )
+            catchup_matches[did] = fallback
+            if last_sent is None:
+                print(
+                    f"CLIENT {cid}: first Telegram digest will use "
+                    f"{len(fallback)} latest unsent matches."
+                )
+            else:
+                print(
+                    f"CLIENT {cid}: catch-up digest will use "
+                    f"{len(fallback)} unsent matches after "
+                    f"{last_sent.isoformat()}."
+                )
 
     candidate_matches = list(current)
-    for rows in first_digest_matches.values():
+    for rows in catchup_matches.values():
         candidate_matches.extend(rows)
 
     ids = sorted({int(m["tender_id"]) for m in candidate_matches})
@@ -327,8 +355,8 @@ def main():
                 continue
             client_matches.append(m)
 
-        if not client_matches and did in first_digest_matches:
-            client_matches = first_digest_matches[did]
+        if not client_matches and did in catchup_matches:
+            client_matches = catchup_matches[did]
 
         if not client_matches:
             print(f"CLIENT {cid}: no unsent matches to send.")
