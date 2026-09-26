@@ -329,7 +329,12 @@ def auto_match_profiles(cfg):
                     "exclude": [],
                     "rule": "automatic keyword match",
                 },
-                "status": "new",
+                # 14D SAFE:
+                # Не передаём status при UPSERT.
+                # Для НОВОЙ записи PostgreSQL возьмёт DEFAULT 'new'.
+                # Для УЖЕ существующей записи пользовательский статус
+                # (viewed / interested / in_work / rejected) сохранится.
+                # is_favorite также не передаётся и поэтому не перезаписывается.
             })
 
     if not matches_to_upsert:
