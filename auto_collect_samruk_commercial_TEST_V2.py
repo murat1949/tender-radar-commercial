@@ -25,6 +25,7 @@ import os
 import subprocess
 import sys
 import urllib.request
+import urllib.error
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
@@ -51,14 +52,23 @@ def headers(c):
         "apikey": key,
         "Authorization": "Bearer " + key,
         "Accept": "application/json",
+        # Таблицы проекта находятся в схеме commercial.
+        # Без этого заголовка PostgREST обращается не к той схеме.
+        "Accept-Profile": "commercial",
     }
 
 
 def rest_get(c, path):
     url = c["SUPABASE_URL"].rstrip("/") + "/rest/v1/" + path.lstrip("/")
     req = urllib.request.Request(url, headers=headers(c), method="GET")
-    with urllib.request.urlopen(req, timeout=60) as resp:
-        return json.loads(resp.read().decode("utf-8"))
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        body = e.read().decode("utf-8", errors="replace")
+        raise RuntimeError(
+            f"Supabase HTTP {e.code}: {body}"
+        ) from e
 
 
 def normalize_list(v):
