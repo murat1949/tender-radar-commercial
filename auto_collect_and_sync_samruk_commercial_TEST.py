@@ -236,6 +236,8 @@ def merge_rows(rows):
     return list(merged.values())
 
 
+# Точная структура commercial.tenders подтверждена в Supabase.
+# В таблице НЕТ status_code. Пишем только реально существующие поля.
 ALLOWED_TENDER_FIELDS = {
     "source_code",
     "source_tender_id",
@@ -247,7 +249,6 @@ ALLOWED_TENDER_FIELDS = {
     "customer_bin",
     "region",
     "procurement_method",
-    "status_code",
     "status_name",
     "amount",
     "currency",
@@ -380,6 +381,7 @@ def main():
     print("=" * 72)
     print("TENDER RADAR KZ COMMERCIAL — SAMRUK -> SUPABASE TEST SYNC")
     print("GOSZAKUP UNCHANGED • TELEGRAM NOT STARTED")
+    print("SCHEMA FIX: commercial.tenders = 24 columns, no status_code")
     print("=" * 72)
 
     cfg = get_config()
