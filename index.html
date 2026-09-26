@@ -452,6 +452,68 @@
       margin: 8px 0 12px;
     }
 
+
+    /* ===== Protocol 14D: work queue filters ===== */
+
+    .radar-workqueue {
+      margin-top: 14px;
+      padding: 12px;
+      border: 1px solid #dbeafe;
+      border-radius: 12px;
+      background: #f8fbff;
+    }
+
+    .radar-workqueue-title {
+      margin-bottom: 9px;
+      color: #0f4d80;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: .02em;
+      text-transform: uppercase;
+    }
+
+    .radar-workqueue-buttons {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .radar-work-btn {
+      border: 1px solid #bfdbfe;
+      border-radius: 999px;
+      background: #ffffff;
+      color: #155e9a;
+      padding: 7px 11px;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: .15s ease;
+    }
+
+    .radar-work-btn:hover {
+      background: #eff6ff;
+    }
+
+    .radar-work-btn.active {
+      border-color: #155e9a;
+      background: #155e9a;
+      color: #ffffff;
+    }
+
+    .radar-work-count {
+      display: inline-block;
+      min-width: 16px;
+      margin-left: 4px;
+      opacity: .85;
+    }
+
+    @media(max-width:560px) {
+      .radar-work-btn {
+        flex: 1 1 calc(50% - 8px);
+        text-align: center;
+      }
+    }
+
     #tenders {
       display: grid;
       grid-template-columns: repeat(2, minmax(0,1fr));
@@ -1611,6 +1673,38 @@
           <button class="radar-filter-btn" data-radar-period="7d" onclick="radarSetPeriod('7d')">≤ 7 дней</button>
         </div>
 
+        <div class="radar-workqueue">
+          <div class="radar-workqueue-title">
+            Рабочая очередь
+          </div>
+
+          <div class="radar-workqueue-buttons">
+            <button class="radar-work-btn active" data-radar-work="all" onclick="radarSetWorkFilter('all')">
+              Все <span class="radar-work-count" id="workCountAll">0</span>
+            </button>
+
+            <button class="radar-work-btn" data-radar-work="favorite" onclick="radarSetWorkFilter('favorite')">
+              ★ Избранное <span class="radar-work-count" id="workCountFavorite">0</span>
+            </button>
+
+            <button class="radar-work-btn" data-radar-work="interested" onclick="radarSetWorkFilter('interested')">
+              Интересен <span class="radar-work-count" id="workCountInterested">0</span>
+            </button>
+
+            <button class="radar-work-btn" data-radar-work="in_work" onclick="radarSetWorkFilter('in_work')">
+              В работу <span class="radar-work-count" id="workCountInWork">0</span>
+            </button>
+
+            <button class="radar-work-btn" data-radar-work="viewed" onclick="radarSetWorkFilter('viewed')">
+              Просмотрен <span class="radar-work-count" id="workCountViewed">0</span>
+            </button>
+
+            <button class="radar-work-btn" data-radar-work="rejected" onclick="radarSetWorkFilter('rejected')">
+              Не подходит <span class="radar-work-count" id="workCountRejected">0</span>
+            </button>
+          </div>
+        </div>
+
         <div class="radar-toolbar">
           <input
             id="radarSearch"
@@ -1700,6 +1794,7 @@ let currentClient = null;
 
 let radarTenderItems = [];
 let radarPeriod = "all";
+let radarWorkFilter = "all";
 let radarExpiredHidden = 0;
 let radarVisibleLimit = 6;
 const radarPageSize = 6;
@@ -1775,6 +1870,91 @@ function radarSetPeriod(period) {
   radarApplyFilters();
 
 }
+
+
+function radarSetWorkFilter(filter) {
+
+  radarWorkFilter =
+    filter || "all";
+
+  radarVisibleLimit =
+    radarPageSize;
+
+  document
+    .querySelectorAll("[data-radar-work]")
+    .forEach(btn => {
+      btn.classList.toggle(
+        "active",
+        btn.getAttribute("data-radar-work") === radarWorkFilter
+      );
+    });
+
+  radarApplyFilters();
+
+}
+
+function radarMatchesWorkFilter(item) {
+
+  const match = item.match || {};
+  const status = match.status || "new";
+
+  if (radarWorkFilter === "all") {
+    return true;
+  }
+
+  if (radarWorkFilter === "favorite") {
+    return Boolean(match.is_favorite);
+  }
+
+  return status === radarWorkFilter;
+
+}
+
+function radarUpdateWorkQueueCounts() {
+
+  const counts = {
+    all: radarTenderItems.length,
+    favorite: 0,
+    interested: 0,
+    in_work: 0,
+    viewed: 0,
+    rejected: 0
+  };
+
+  radarTenderItems.forEach(item => {
+
+    const match = item.match || {};
+
+    if (match.is_favorite) {
+      counts.favorite += 1;
+    }
+
+    const status = match.status || "new";
+
+    if (Object.prototype.hasOwnProperty.call(counts, status)) {
+      counts[status] += 1;
+    }
+
+  });
+
+  const map = {
+    workCountAll: counts.all,
+    workCountFavorite: counts.favorite,
+    workCountInterested: counts.interested,
+    workCountInWork: counts.in_work,
+    workCountViewed: counts.viewed,
+    workCountRejected: counts.rejected
+  };
+
+  Object.entries(map).forEach(([id, value]) => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.textContent = value;
+    }
+  });
+
+}
+
 
 function radarUpdateKpis() {
 
@@ -2033,6 +2213,12 @@ async function updateTenderWorkStatus(matchId, newStatus) {
     "ok"
   );
 
+  radarUpdateWorkQueueCounts();
+
+  if (radarWorkFilter !== "all") {
+    radarApplyFilters(false);
+  }
+
 }
 
 async function toggleTenderFavorite(matchId) {
@@ -2133,6 +2319,12 @@ async function toggleTenderFavorite(matchId) {
       : "Удалено из избранного.",
     "ok"
   );
+
+  radarUpdateWorkQueueCounts();
+
+  if (radarWorkFilter === "favorite") {
+    radarApplyFilters(false);
+  }
 
 }
 
@@ -2575,6 +2767,8 @@ function radarApplyFilters(resetLimit) {
     return;
   }
 
+  radarUpdateWorkQueueCounts();
+
   const search =
     (
       document
@@ -2632,6 +2826,10 @@ function radarApplyFilters(resetLimit) {
         }
 
         if (!radarMatchesPeriod(item)) {
+          return false;
+        }
+
+        if (!radarMatchesWorkFilter(item)) {
           return false;
         }
 
@@ -2791,12 +2989,23 @@ function radarApplyFilters(resetLimit) {
 
   }
 
+  const workFilterLabels = {
+    all: "",
+    favorite: " · очередь: Избранное",
+    interested: " · очередь: Интересен",
+    in_work: " · очередь: В работу",
+    viewed: " · очередь: Просмотрен",
+    rejected: " · очередь: Не подходит"
+  };
+
   note.textContent =
     "Показано: " +
     shownCount +
     " из " +
     radarTenderItems.length +
-    " актуальных." +
+    " актуальных" +
+    (workFilterLabels[radarWorkFilter] || "") +
+    "." +
     (
       radarExpiredHidden > 0
         ? " Просроченные скрыты: " +
