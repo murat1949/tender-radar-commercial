@@ -1027,7 +1027,39 @@
 
   <div id="message"></div>
 
-  <div id="loginBlock" class="card login-card">
+  <!-- ===== Gumroad license gate V2 ===== -->
+  <div id="licenseBlock" class="card login-card">
+
+    <h2>Доступ по лицензии Gumroad</h2>
+
+    <p>
+      Введите лицензионный ключ, полученный после оплаты.
+    </p>
+
+    <input
+      id="gumroadLicenseKey"
+      type="text"
+      placeholder="XXXX-XXXX-XXXX-XXXX"
+      autocomplete="off"
+      spellcheck="false"
+    >
+
+    <button
+      id="gumroadLicenseButton"
+      class="primary login-button"
+      onclick="verifyGumroadLicense()"
+    >
+      Проверить ключ
+    </button>
+
+    <p class="hint" style="margin-top:14px;margin-bottom:0">
+      После успешной проверки откроется вход в личный кабинет.
+    </p>
+
+  </div>
+
+
+  <div id="loginBlock" class="card login-card" style="display:none">
 
     <h2>Вход в кабинет</h2>
 
@@ -1784,6 +1816,238 @@ const sb =
 
 const db =
   sb.schema("commercial");
+
+
+const GUMROAD_VERIFY_URL =
+  "https://ilfxyvsqintvjbifqxvr.supabase.co/functions/v1/gumroad-license-verify";
+
+let gumroadLicenseVerified = false;
+let gumroadLicenseEmail = "";
+
+function normalizeEmail(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function showLicenseGate(message) {
+
+  gumroadLicenseVerified = false;
+  gumroadLicenseEmail = "";
+
+  sessionStorage.removeItem("tr_gumroad_license_verified");
+  sessionStorage.removeItem("tr_gumroad_license_email");
+
+  document
+    .getElementById("licenseBlock")
+    .style.display = "block";
+
+  document
+    .getElementById("loginBlock")
+    .style.display = "none";
+
+  document
+    .getElementById("registrationBlock")
+    .style.display = "none";
+
+  document
+    .getElementById("recoveryRequestBlock")
+    .style.display = "none";
+
+  document
+    .getElementById("newPasswordBlock")
+    .style.display = "none";
+
+  document
+    .getElementById("cabinet")
+    .style.display = "none";
+
+  const keyInput =
+    document.getElementById("gumroadLicenseKey");
+
+  if (keyInput) {
+    keyInput.value = "";
+  }
+
+  if (message) {
+    showInfo(message);
+  } else {
+    clearMessage();
+  }
+}
+
+function showLoginAfterLicense(email) {
+
+  gumroadLicenseVerified = true;
+  gumroadLicenseEmail = normalizeEmail(email);
+
+  sessionStorage.setItem(
+    "tr_gumroad_license_verified",
+    "1"
+  );
+
+  sessionStorage.setItem(
+    "tr_gumroad_license_email",
+    gumroadLicenseEmail
+  );
+
+  document
+    .getElementById("licenseBlock")
+    .style.display = "none";
+
+  document
+    .getElementById("loginBlock")
+    .style.display = "block";
+
+  document
+    .getElementById("registrationBlock")
+    .style.display = "none";
+
+  document
+    .getElementById("recoveryRequestBlock")
+    .style.display = "none";
+
+  const emailInput =
+    document.getElementById("email");
+
+  if (emailInput) {
+    emailInput.value = gumroadLicenseEmail;
+    emailInput.readOnly = true;
+  }
+
+  showSuccess(
+    "Лицензия подтверждена. Теперь войдите в кабинет."
+  );
+}
+
+async function verifyGumroadLicense() {
+
+  clearMessage();
+
+  const input =
+    document.getElementById("gumroadLicenseKey");
+
+  const button =
+    document.getElementById("gumroadLicenseButton");
+
+  const licenseKey =
+    String(input?.value || "").trim();
+
+  if (!licenseKey) {
+    showError("Введите лицензионный ключ Gumroad.");
+    return;
+  }
+
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Проверяем...";
+  }
+
+  showInfo("Проверяем лицензию Gumroad...");
+
+  try {
+
+    const response =
+      await fetch(
+        GUMROAD_VERIFY_URL,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            license_key: licenseKey
+          })
+        }
+      );
+
+    let result = {};
+
+    try {
+      result = await response.json();
+    } catch (_) {
+      result = {};
+    }
+
+    if (
+      !response.ok ||
+      !result ||
+      result.success !== true ||
+      result.active !== true ||
+      !result.email
+    ) {
+      showLicenseGate();
+      showError(
+        result?.error ||
+        "Лицензионный ключ не подтверждён или доступ уже не активен."
+      );
+      return;
+    }
+
+    const paidUntil =
+      result.paid_until
+        ? new Date(result.paid_until)
+        : null;
+
+    if (
+      paidUntil &&
+      !Number.isNaN(paidUntil.getTime()) &&
+      paidUntil.getTime() < Date.now()
+    ) {
+      showLicenseGate();
+      showError(
+        "Срок оплаченного доступа по этой лицензии уже истёк."
+      );
+      return;
+    }
+
+    const verifiedEmail =
+      normalizeEmail(result.email);
+
+    const {
+      data: { session }
+    } =
+      await sb.auth.getSession();
+
+    if (
+      session?.user &&
+      normalizeEmail(session.user.email) !== verifiedEmail
+    ) {
+      await sb.auth.signOut();
+    }
+
+    showLoginAfterLicense(verifiedEmail);
+
+    const {
+      data: { session: freshSession }
+    } =
+      await sb.auth.getSession();
+
+    if (
+      freshSession?.user &&
+      normalizeEmail(freshSession.user.email) === verifiedEmail
+    ) {
+      clearMessage();
+      await openCabinet(freshSession.user);
+    }
+
+  } catch (error) {
+
+    console.error(error);
+
+    showLicenseGate();
+
+    showError(
+      "Не удалось проверить лицензию. Проверьте интернет-соединение и попробуйте ещё раз."
+    );
+
+  } finally {
+
+    if (button) {
+      button.disabled = false;
+      button.textContent = "Проверить ключ";
+    }
+
+  }
+}
 
 
 let currentClientId = null;
@@ -3753,6 +4017,12 @@ async function login() {
 
   clearMessage();
 
+  if (!gumroadLicenseVerified) {
+    showLicenseGate();
+    showError("Сначала подтвердите лицензионный ключ Gumroad.");
+    return;
+  }
+
   const email =
     document
       .getElementById("email")
@@ -3770,6 +4040,16 @@ async function login() {
       "Введите email и пароль."
     );
 
+    return;
+  }
+
+  if (
+    gumroadLicenseEmail &&
+    normalizeEmail(email) !== gumroadLicenseEmail
+  ) {
+    showError(
+      "Email входа должен совпадать с email покупателя Gumroad."
+    );
     return;
   }
 
@@ -3826,17 +4106,20 @@ async function logout() {
     "none";
 
   document
-    .getElementById("loginBlock")
-    .style.display =
-    "block";
-
-  document
     .getElementById("password")
     .value =
     "";
 
-  showInfo(
-    "Вы вышли из кабинета."
+  const emailInput =
+    document.getElementById("email");
+
+  if (emailInput) {
+    emailInput.value = "";
+    emailInput.readOnly = false;
+  }
+
+  showLicenseGate(
+    "Вы вышли из кабинета. Для нового входа подтвердите лицензионный ключ."
   );
 
 }
@@ -5169,6 +5452,18 @@ async function init() {
     return;
   }
 
+  gumroadLicenseVerified =
+    sessionStorage.getItem(
+      "tr_gumroad_license_verified"
+    ) === "1";
+
+  gumroadLicenseEmail =
+    normalizeEmail(
+      sessionStorage.getItem(
+        "tr_gumroad_license_email"
+      )
+    );
+
   const {
     data: {
       session
@@ -5176,17 +5471,34 @@ async function init() {
   } =
     await sb.auth.getSession();
 
+  if (!gumroadLicenseVerified || !gumroadLicenseEmail) {
+    showLicenseGate();
+    return;
+  }
 
   if (
     session &&
-    session.user
+    session.user &&
+    normalizeEmail(session.user.email) === gumroadLicenseEmail
   ) {
+    document
+      .getElementById("licenseBlock")
+      .style.display = "none";
 
     await openCabinet(
       session.user
     );
 
+    return;
   }
+
+  if (session && session.user) {
+    await sb.auth.signOut();
+  }
+
+  showLoginAfterLicense(
+    gumroadLicenseEmail
+  );
 
 }
 
