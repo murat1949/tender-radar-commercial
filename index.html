@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
   <title>Tender Radar KZ Commercial</title>
-  <!-- GUMROAD LICENSE V3: first registration flow -->
+  <!-- GUMROAD LICENSE V4: persistent account binding; key required only for first activation -->
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
@@ -1054,7 +1054,7 @@
     </button>
 
     <p class="hint" style="margin-top:14px;margin-bottom:0">
-      После успешной проверки откроется вход в личный кабинет.
+      Ключ нужен только для первой активации. После привязки вход выполняется по email и паролю.
     </p>
 
   </div>
@@ -1098,13 +1098,13 @@
     </button>
 
     <div class="register-wrap">
-      Нет аккаунта?
+      Первый вход после покупки?
       <button
         type="button"
         class="link-button"
-        onclick="showRegistration()"
+        onclick="showLicenseActivation()"
       >
-        Зарегистрироваться
+        Активировать лицензию
       </button>
     </div>
 
@@ -1863,6 +1863,10 @@
 
 <script>
 
+// ===== Protocol 19: persistent Gumroad license binding =====
+// First activation: Gumroad key -> account -> license binding.
+// Subsequent access: email + password only; validity is checked from commercial.clients.
+
 const SUPABASE_URL =
   "https://ilfxyvsqintvjbifqxvr.supabase.co";
 
@@ -1884,18 +1888,180 @@ const GUMROAD_VERIFY_URL =
 
 let gumroadLicenseVerified = false;
 let gumroadLicenseEmail = "";
+let gumroadLicenseMeta = null;
+
+const GUMROAD_SESSION_META_KEY = "tr_gumroad_license_meta";
 
 function normalizeEmail(value) {
   return String(value || "").trim().toLowerCase();
 }
 
-function showLicenseGate(message) {
+async function sha256Hex(value) {
+  const bytes = new TextEncoder().encode(String(value || ""));
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest))
+    .map(b => b.toString(16).padStart(2, "0"))
+    .join("");
+}
 
+function savePendingLicenseMeta(meta) {
+  gumroadLicenseMeta = meta || null;
+
+  if (gumroadLicenseMeta) {
+    sessionStorage.setItem(
+      GUMROAD_SESSION_META_KEY,
+      JSON.stringify(gumroadLicenseMeta)
+    );
+  } else {
+    sessionStorage.removeItem(GUMROAD_SESSION_META_KEY);
+  }
+}
+
+function loadPendingLicenseMeta() {
+  try {
+    const raw = sessionStorage.getItem(GUMROAD_SESSION_META_KEY);
+    gumroadLicenseMeta = raw ? JSON.parse(raw) : null;
+  } catch (_) {
+    gumroadLicenseMeta = null;
+    sessionStorage.removeItem(GUMROAD_SESSION_META_KEY);
+  }
+
+  return gumroadLicenseMeta;
+}
+
+function clearPendingLicenseMeta() {
   gumroadLicenseVerified = false;
   gumroadLicenseEmail = "";
+  gumroadLicenseMeta = null;
 
   sessionStorage.removeItem("tr_gumroad_license_verified");
   sessionStorage.removeItem("tr_gumroad_license_email");
+  sessionStorage.removeItem(GUMROAD_SESSION_META_KEY);
+}
+
+function hideAuthBlocks() {
+  [
+    "licenseBlock",
+    "loginBlock",
+    "registrationBlock",
+    "firstRegistrationBlock",
+    "recoveryRequestBlock",
+    "newPasswordBlock"
+  ].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = "none";
+  });
+}
+
+function showLoginHome(message) {
+  hideAuthBlocks();
+
+  document.getElementById("cabinet").style.display = "none";
+  document.getElementById("loginBlock").style.display = "block";
+
+  const emailInput = document.getElementById("email");
+  if (emailInput) {
+    emailInput.readOnly = false;
+  }
+
+  if (message) {
+    showInfo(message);
+  } else {
+    clearMessage();
+  }
+}
+
+function showLicenseActivation() {
+  clearMessage();
+  hideAuthBlocks();
+  document.getElementById("cabinet").style.display = "none";
+  document.getElementById("licenseBlock").style.display = "block";
+
+  const keyInput = document.getElementById("gumroadLicenseKey");
+  if (keyInput) {
+    keyInput.value = "";
+    keyInput.focus();
+  }
+
+  showInfo(
+    "Первичная активация: введите ключ Gumroad. После успешной привязки этот ключ при обычном входе больше не потребуется."
+  );
+}
+
+async function bindPendingLicenseToUser(user) {
+  const meta = loadPendingLicenseMeta();
+
+  if (!meta || !meta.verified || !meta.email || !meta.license_key_hash) {
+    return { bound: false, skipped: true };
+  }
+
+  if (
+    !user ||
+    normalizeEmail(user.email) !== normalizeEmail(meta.email)
+  ) {
+    throw new Error("Email аккаунта не совпадает с email покупателя Gumroad.");
+  }
+
+  const { data: link, error: linkError } =
+    await db
+      .from("client_users")
+      .select("client_id")
+      .eq("auth_user_id", user.id)
+      .eq("active", true)
+      .single();
+
+  if (linkError || !link?.client_id) {
+    throw new Error(
+      "Карточка клиента ещё не создана. Обновите страницу через несколько секунд и войдите снова."
+    );
+  }
+
+  const { data: duplicate, error: duplicateError } =
+    await db
+      .from("clients")
+      .select("id")
+      .eq("license_key_hash", meta.license_key_hash)
+      .neq("id", link.client_id)
+      .limit(1);
+
+  if (duplicateError) {
+    throw duplicateError;
+  }
+
+  if (duplicate && duplicate.length) {
+    throw new Error("Этот лицензионный ключ уже привязан к другому аккаунту.");
+  }
+
+  const updateData = {
+    payment_provider: "gumroad",
+    license_key_hash: meta.license_key_hash,
+    license_verified_at: meta.verified_at || new Date().toISOString(),
+    gumroad_purchase_at: meta.purchase_date || null,
+    expires_at: meta.paid_until || null,
+    payment_status: "active"
+  };
+
+  const { error: updateError } =
+    await db
+      .from("clients")
+      .update(updateData)
+      .eq("id", link.client_id);
+
+  if (updateError) {
+    throw updateError;
+  }
+
+  clearPendingLicenseMeta();
+
+  return {
+    bound: true,
+    client_id: link.client_id
+  };
+}
+
+function showLicenseGate(message) {
+
+  clearPendingLicenseMeta();
 
   document
     .getElementById("licenseBlock")
@@ -2103,13 +2269,24 @@ async function createFirstAccount() {
     .getElementById("firstRegisterPasswordRepeat")
     .value = "";
 
-  if (data.session) {
-    showSuccess(
-      "Аккаунт создан. Следующий этап — создать и привязать карточку клиента."
-    );
+  if (data.session && data.user) {
+    try {
+      await bindPendingLicenseToUser(data.user);
+      showSuccess(
+        "Аккаунт создан, лицензия Gumroad привязана. В дальнейшем входите только по email и паролю."
+      );
+      await openCabinet(data.user);
+      return;
+    } catch (bindError) {
+      console.error(bindError);
+      showError(
+        "Аккаунт создан, но привязку лицензии нужно завершить: " +
+        (bindError.message || bindError)
+      );
+    }
   } else {
     showSuccess(
-      "Аккаунт создан. Проверьте почту и подтвердите email. После подтверждения вернитесь сюда и войдите."
+      "Аккаунт создан. Проверьте почту и подтвердите email. После подтверждения вернитесь и войдите — лицензия привяжется автоматически."
     );
   }
 
@@ -2215,6 +2392,19 @@ async function verifyGumroadLicense() {
     const verifiedEmail =
       normalizeEmail(result.email);
 
+    const licenseHash =
+      await sha256Hex(licenseKey);
+
+    savePendingLicenseMeta({
+      verified: true,
+      email: verifiedEmail,
+      license_key_hash: licenseHash,
+      purchase_date: result.purchase_date || null,
+      paid_until: result.paid_until || null,
+      verified_at: new Date().toISOString(),
+      product_name: result.product_name || ""
+    });
+
     const {
       data: { session }
     } =
@@ -2239,6 +2429,7 @@ async function verifyGumroadLicense() {
       normalizeEmail(freshSession.user.email) === verifiedEmail
     ) {
       clearMessage();
+      await bindPendingLicenseToUser(freshSession.user);
       await openCabinet(freshSession.user);
     }
 
@@ -3703,6 +3894,19 @@ function accessIsActive() {
     return false;
   }
 
+  const isRealCommercialClient =
+    String(currentClient.code || "").startsWith("client-");
+
+  if (isRealCommercialClient) {
+    if (currentClient.payment_provider !== "gumroad") {
+      return false;
+    }
+
+    if (!currentClient.license_verified_at || !currentClient.expires_at) {
+      return false;
+    }
+  }
+
   if (
     currentClient.expires_at &&
     new Date(currentClient.expires_at) < new Date()
@@ -4230,12 +4434,6 @@ async function login() {
 
   clearMessage();
 
-  if (!gumroadLicenseVerified) {
-    showLicenseGate();
-    showError("Сначала подтвердите лицензионный ключ Gumroad.");
-    return;
-  }
-
   const email =
     document
       .getElementById("email")
@@ -4295,6 +4493,17 @@ async function login() {
 
   clearMessage();
 
+  try {
+    await bindPendingLicenseToUser(data.user);
+  } catch (bindError) {
+    console.error(bindError);
+    showError(
+      "Вход выполнен, но не удалось завершить привязку лицензии: " +
+      (bindError.message || bindError)
+    );
+    return;
+  }
+
   await openCabinet(
     data.user
   );
@@ -4331,8 +4540,10 @@ async function logout() {
     emailInput.readOnly = false;
   }
 
-  showLicenseGate(
-    "Вы вышли из кабинета. Для нового входа подтвердите лицензионный ключ."
+  clearPendingLicenseMeta();
+
+  showLoginHome(
+    "Вы вышли из кабинета. Для следующего входа достаточно email и пароля."
   );
 
 }
@@ -5093,6 +5304,26 @@ async function openCabinet(user) {
 
     currentClient = client;
 
+    if (!accessIsActive()) {
+      const expired =
+        client.expires_at &&
+        new Date(client.expires_at) < new Date();
+
+      document.getElementById("cabinet").style.display = "none";
+
+      await sb.auth.signOut();
+
+      showLoginHome();
+
+      showError(
+        expired
+          ? "Срок оплаченного доступа истёк. Для продления активируйте новую лицензию Gumroad."
+          : "Лицензия не привязана или доступ не активен. Выполните первичную активацию Gumroad."
+      );
+
+      return;
+    }
+
     const {
       data: sourceRows,
       error: sourceError
@@ -5677,6 +5908,8 @@ async function init() {
       )
     );
 
+  loadPendingLicenseMeta();
+
   const {
     data: {
       session
@@ -5684,37 +5917,33 @@ async function init() {
   } =
     await sb.auth.getSession();
 
-  if (!gumroadLicenseVerified || !gumroadLicenseEmail) {
-    showLicenseGate();
-    return;
+  if (session?.user) {
+    try {
+      await bindPendingLicenseToUser(session.user);
+      await openCabinet(session.user);
+      return;
+    } catch (error) {
+      console.error(error);
+      await sb.auth.signOut();
+      showLoginHome();
+      showError(
+        error.message ||
+        "Не удалось открыть кабинет. Войдите повторно."
+      );
+      return;
+    }
   }
 
-  if (
-    session &&
-    session.user &&
-    normalizeEmail(session.user.email) === gumroadLicenseEmail
-  ) {
-    document
-      .getElementById("licenseBlock")
-      .style.display = "none";
-
-    await openCabinet(
-      session.user
+  if (gumroadLicenseVerified && gumroadLicenseEmail) {
+    showFirstRegistrationAfterLicense(
+      gumroadLicenseEmail
     );
-
     return;
   }
 
-  if (session && session.user) {
-    await sb.auth.signOut();
-  }
-
-  showFirstRegistrationAfterLicense(
-    gumroadLicenseEmail
-  );
+  showLoginHome();
 
 }
-
 
 init();
 
