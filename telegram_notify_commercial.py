@@ -3,19 +3,19 @@
 Tender Radar KZ Commercial — Telegram DIGEST
 
 Правила:
-1) В обычном режиме берём только совпадения текущего запуска
+1) В обычном режиме берём совпадения текущего запуска
    (matched_at >= RUN_STARTED_AT).
 2) Работаем только с active=true в commercial.telegram_destinations.
-3) На каждого активного клиента отправляем ОДНО сообщение-дайджест.
+3) На каждого активного клиента отправляем одно сообщение-дайджест.
 4) В сообщении показываем максимум 5 новых тендеров.
 5) Если новых больше — пишем, сколько ещё доступно в кабинете.
-6) После успешной отправки помечаем отправленные тендеры как sent,
-   чтобы они не пришли повторно.
-7) Если в текущем запуске новых совпадений нет, допускается
-   догоняющая отправка: до 5 последних неотправленных совпадений,
-   появившихся после последней успешной Telegram-отправки.
-   Для нового Telegram без истории успешных отправок берём до 5
-   последних неотправленных подходящих тендеров.
+6) После успешной отправки помечаем отправленные тендеры как sent.
+7) Если в текущем запуске новых совпадений нет, допускается догоняющая
+   отправка последних неотправленных совпадений.
+8) Для безопасного ручного теста можно задать TELEGRAM_CLIENT_ID.
+   Тогда обрабатывается только указанный client_id.
+   Если TELEGRAM_CLIENT_ID не задан, рабочий режим остаётся обычным:
+   обрабатываются все активные Telegram-направления.
 """
 
 import os
@@ -92,7 +92,7 @@ def normalize_list(v):
 
 def short(text, n=160):
     s = str(text or "").strip()
-    return s if len(s) <= n else s[:n - 1].rstrip() + "…"
+    return s if len(s) <= n else s[: n - 1].rstrip() + "…"
 
 
 def money_text(amount, currency):
@@ -100,7 +100,11 @@ def money_text(amount, currency):
         return "—"
     try:
         v = float(amount)
-        txt = f"{int(v):,}".replace(",", " ") if v.is_integer() else f"{v:,.2f}".replace(",", " ")
+        txt = (
+            f"{int(v):,}".replace(",", " ")
+            if v.is_integer()
+            else f"{v:,.2f}".replace(",", " ")
+        )
     except Exception:
         txt = str(amount)
     return f"{txt} {currency or 'KZT'}"
@@ -108,11 +112,13 @@ def money_text(amount, currency):
 
 def send_telegram(token, chat_id, text):
     url = f"https://api.telegram.org/bot{token}/sendMessage"
-    data = urllib.parse.urlencode({
-        "chat_id": str(chat_id),
-        "text": text,
-        "disable_web_page_preview": "true",
-    }).encode("utf-8")
+    data = urllib.parse.urlencode(
+        {
+            "chat_id": str(chat_id),
+            "text": text,
+            "disable_web_page_preview": "true",
+        }
+    ).encode("utf-8")
     req = urllib.request.Request(url, data=data, method="POST")
     with urllib.request.urlopen(req, timeout=60) as r:
         result = json.loads(r.read().decode("utf-8"))
@@ -124,7 +130,8 @@ def send_telegram(token, chat_id, text):
 def build_digest(destination, matches, tenders):
     ordered = sorted(
         matches,
-        key=lambda m: parse_dt(m.get("matched_at")) or datetime.min.replace(tzinfo=timezone.utc),
+        key=lambda m: parse_dt(m.get("matched_at"))
+        or datetime.min.replace(tzinfo=timezone.utc),
         reverse=True,
     )
 
@@ -146,7 +153,6 @@ def build_digest(destination, matches, tenders):
             f"   Срок: {t.get('expires_at') or '—'}",
             f"   Совпадение: {short(matched, 80)}",
         ]
-
         if t.get("public_url"):
             lines.append(f"   {t['public_url']}")
         lines.append("")
@@ -165,19 +171,20 @@ def build_digest(destination, matches, tenders):
 def mark_all_sent(cfg, destination, matches, message_id):
     now = datetime.now(timezone.utc).isoformat()
     rows = []
-
     for m in matches:
-        rows.append({
-            "client_id": m["client_id"],
-            "profile_id": m["profile_id"],
-            "tender_id": m["tender_id"],
-            "destination_id": destination["id"],
-            "channel": "telegram",
-            "status": "sent",
-            "provider_message_id": message_id,
-            "error_text": None,
-            "sent_at": now,
-        })
+        rows.append(
+            {
+                "client_id": m["client_id"],
+                "profile_id": m["profile_id"],
+                "tender_id": m["tender_id"],
+                "destination_id": destination["id"],
+                "channel": "telegram",
+                "status": "sent",
+                "provider_message_id": message_id,
+                "error_text": None,
+                "sent_at": now,
+            }
+        )
 
     if rows:
         rest_post(
@@ -196,6 +203,7 @@ def main():
         "SUPABASE_SERVICE_ROLE_KEY": env("SUPABASE_SERVICE_ROLE_KEY"),
         "TELEGRAM_BOT_TOKEN": env("TELEGRAM_BOT_TOKEN"),
         "RUN_STARTED_AT": env("RUN_STARTED_AT"),
+        "TELEGRAM_CLIENT_ID": env("TELEGRAM_CLIENT_ID"),
     }
 
     if not cfg["TELEGRAM_BOT_TOKEN"]:
@@ -213,19 +221,50 @@ def main():
         cfg,
         "telegram_destinations"
         "?select=id,client_id,chat_id,label,active,only_urgent"
-        "&active=eq.true"
+        "&active=eq.true",
     )
 
     if not destinations:
         print("No active Telegram destinations.")
         return 0
 
+    # Безопасный ручной режим: только один клиент.
+    target_client_id = cfg["TELEGRAM_CLIENT_ID"]
+    if target_client_id:
+        try:
+            target_client_id_int = int(target_client_id)
+        except ValueError:
+            print(
+                f"SAFE STOP: TELEGRAM_CLIENT_ID must be integer; "
+                f"got {target_client_id!r}."
+            )
+            return 0
+
+        destinations = [
+            d
+            for d in destinations
+            if int(d["client_id"]) == target_client_id_int
+        ]
+        print(
+            f"TELEGRAM TEST MODE: only client_id={target_client_id_int}; "
+            f"destinations={len(destinations)}"
+        )
+
+        if not destinations:
+            print(
+                f"SAFE STOP: no active Telegram destination for "
+                f"client_id={target_client_id_int}."
+            )
+            return 0
+    else:
+        print("TELEGRAM NORMAL MODE: all active destinations.")
+
     all_matches = rest_get(
         cfg,
         "client_tender_matches"
         "?select=client_id,profile_id,tender_id,matched_keyword,matched_at"
         "&order=matched_at.desc"
-        "&limit=3000"
+        "&limit=3000",
     )
 
     current = []
@@ -242,16 +281,15 @@ def main():
         cfg,
         "notifications_sent"
         "?select=destination_id,tender_id,status,channel,sent_at"
-        "&channel=eq.telegram"
+        "&channel=eq.telegram",
     )
+
     already = {
         (int(r["destination_id"]), int(r["tender_id"]))
         for r in existing
         if r.get("status") == "sent"
     }
 
-    # Последняя УСПЕШНАЯ отправка для каждого Telegram-направления.
-    # Записи status=error здесь не учитываются.
     last_sent_by_destination = {}
     for r in existing:
         if r.get("status") != "sent" or not r.get("sent_at"):
@@ -264,12 +302,8 @@ def main():
         if prev is None or dt > prev:
             last_sent_by_destination[did] = dt
 
-    # Если в текущем запуске ничего нового для клиента нет,
-    # догоняем до MAX_ITEMS последних НЕОТПРАВЛЕННЫХ совпадений,
-    # появившихся ПОСЛЕ последней успешной отправки.
-    # Для совершенно нового Telegram без успешных отправок
-    # берём до MAX_ITEMS последних неотправленных совпадений.
     catchup_matches = {}
+
     for d in destinations:
         if d.get("only_urgent"):
             continue
@@ -278,7 +312,8 @@ def main():
         cid = int(d["client_id"])
 
         current_unsent = [
-            m for m in current
+            m
+            for m in current
             if int(m["client_id"]) == cid
             and (did, int(m["tender_id"])) not in already
         ]
@@ -326,12 +361,12 @@ def main():
     tenders = {}
 
     for start in range(0, len(ids), 100):
-        chunk = ",".join(str(x) for x in ids[start:start + 100])
+        chunk = ",".join(str(x) for x in ids[start : start + 100])
         rows = rest_get(
             cfg,
             "tenders"
             "?select=id,title,amount,currency,expires_at,public_url"
-            f"&id=in.({chunk})"
+            f"&id=in.({chunk})",
         )
         for t in rows:
             tenders[int(t["id"])] = t
@@ -374,7 +409,6 @@ def main():
 
             digests_sent += 1
             tenders_marked += len(client_matches)
-
             print(
                 f"DIGEST SENT: client={cid} "
                 f"new_tenders={len(client_matches)} "
