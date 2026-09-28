@@ -5773,8 +5773,10 @@ async function openCabinet(user) {
 
       // 14B: используем уже проверенную выборку тендеров,
       // скрываем просроченные и строим радар поверх актуальных данных.
+      // Protocol 20 fix:
+      // process all matches; visible cards are still paginated by radarVisibleLimit/radarPageSize.
       const candidateMatches =
-        matches.slice(0,100);
+        matches;
 
       const tenderIds =
         candidateMatches
