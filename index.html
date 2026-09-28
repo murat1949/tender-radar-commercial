@@ -1971,6 +1971,43 @@ function showLoginHome(message) {
   }
 }
 
+// ===== Protocol 19.1: expired-session recovery =====
+// An expired Supabase session must NEVER send an existing client back
+// to the Gumroad license gate. The client simply signs in again.
+function isExpiredAuthError(error) {
+  const msg = String(error?.message || error || "").toLowerCase();
+  return (
+    msg.includes("jwt expired") ||
+    msg.includes("invalid jwt") ||
+    msg.includes("token has expired") ||
+    msg.includes("refresh token")
+  );
+}
+
+async function recoverExpiredSession() {
+  try {
+    await sb.auth.signOut({ scope: "local" });
+  } catch (_) {
+    try {
+      await sb.auth.signOut();
+    } catch (_) {}
+  }
+
+  currentClientId = null;
+  currentProfileId = null;
+  currentProfile = null;
+  currentClient = null;
+  currentTelegramCount = 0;
+  availableSources = [];
+
+  const passwordInput = document.getElementById("password");
+  if (passwordInput) passwordInput.value = "";
+
+  showLoginHome(
+    "Сессия истекла. Войдите снова по email и паролю. Лицензионный ключ повторно вводить не нужно."
+  );
+}
+
 function showLicenseActivation() {
   clearMessage();
   hideAuthBlocks();
@@ -5875,7 +5912,12 @@ async function openCabinet(user) {
 
     console.error(err);
 
+    if (isExpiredAuthError(err)) {
+      await recoverExpiredSession();
+      return;
+    }
 
+    showLoginHome();
     showError(
       "Не удалось открыть кабинет: " +
       (err.message || err)
@@ -5913,9 +5955,15 @@ async function init() {
   const {
     data: {
       session
-    }
+    },
+    error: sessionError
   } =
     await sb.auth.getSession();
+
+  if (sessionError && isExpiredAuthError(sessionError)) {
+    await recoverExpiredSession();
+    return;
+  }
 
   if (session?.user) {
     try {
@@ -5924,7 +5972,16 @@ async function init() {
       return;
     } catch (error) {
       console.error(error);
-      await sb.auth.signOut();
+
+      if (isExpiredAuthError(error)) {
+        await recoverExpiredSession();
+        return;
+      }
+
+      try {
+        await sb.auth.signOut({ scope: "local" });
+      } catch (_) {}
+
       showLoginHome();
       showError(
         error.message ||
