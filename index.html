@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
   <title>Tender Radar KZ Commercial</title>
+  <!-- GUMROAD LICENSE V3: first registration flow -->
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
@@ -1110,6 +1111,66 @@
   </div>
 
 
+
+  <!-- ===== First registration after Gumroad license verification V3 ===== -->
+  <div id="firstRegistrationBlock" class="card register-card" style="display:none">
+
+    <h2>Первый вход</h2>
+
+    <p>
+      Лицензия подтверждена. Создайте пароль для входа в Tender Radar KZ Commercial.
+    </p>
+
+    <input
+      id="firstRegisterEmail"
+      type="email"
+      placeholder="Email"
+      autocomplete="email"
+      readonly
+    >
+
+    <input
+      id="firstRegisterCompany"
+      type="text"
+      placeholder="Название компании"
+      autocomplete="organization"
+    >
+
+    <input
+      id="firstRegisterPassword"
+      type="password"
+      placeholder="Придумайте пароль"
+      autocomplete="new-password"
+    >
+
+    <input
+      id="firstRegisterPasswordRepeat"
+      type="password"
+      placeholder="Повторите пароль"
+      autocomplete="new-password"
+    >
+
+    <button
+      class="primary login-button"
+      onclick="createFirstAccount()"
+    >
+      Создать аккаунт
+    </button>
+
+    <div class="register-wrap">
+      Уже создавали пароль?
+      <button
+        type="button"
+        class="link-button"
+        onclick="showExistingLoginAfterLicense()"
+      >
+        Войти
+      </button>
+    </div>
+
+  </div>
+
+
   <div id="registrationBlock" class="card register-card">
 
     <h2>Регистрация</h2>
@@ -1848,6 +1909,13 @@ function showLicenseGate(message) {
     .getElementById("registrationBlock")
     .style.display = "none";
 
+  const firstRegistrationBlock =
+    document.getElementById("firstRegistrationBlock");
+
+  if (firstRegistrationBlock) {
+    firstRegistrationBlock.style.display = "none";
+  }
+
   document
     .getElementById("recoveryRequestBlock")
     .style.display = "none";
@@ -1874,7 +1942,7 @@ function showLicenseGate(message) {
   }
 }
 
-function showLoginAfterLicense(email) {
+function showFirstRegistrationAfterLicense(email) {
 
   gumroadLicenseVerified = true;
   gumroadLicenseEmail = normalizeEmail(email);
@@ -1895,15 +1963,40 @@ function showLoginAfterLicense(email) {
 
   document
     .getElementById("loginBlock")
-    .style.display = "block";
+    .style.display = "none";
 
   document
     .getElementById("registrationBlock")
     .style.display = "none";
 
   document
-    .getElementById("recoveryRequestBlock")
+    .getElementById("firstRegistrationBlock")
+    .style.display = "block";
+
+  const emailInput =
+    document.getElementById("firstRegisterEmail");
+
+  if (emailInput) {
+    emailInput.value = gumroadLicenseEmail;
+  }
+
+  showSuccess(
+    "Лицензия подтверждена. Если это ваш первый вход — придумайте пароль."
+  );
+}
+
+
+function showExistingLoginAfterLicense() {
+
+  clearMessage();
+
+  document
+    .getElementById("firstRegistrationBlock")
     .style.display = "none";
+
+  document
+    .getElementById("loginBlock")
+    .style.display = "block";
 
   const emailInput =
     document.getElementById("email");
@@ -1913,10 +2006,130 @@ function showLoginAfterLicense(email) {
     emailInput.readOnly = true;
   }
 
-  showSuccess(
-    "Лицензия подтверждена. Теперь войдите в кабинет."
+  document
+    .getElementById("password")
+    .value = "";
+
+  showInfo(
+    "Введите ранее созданный пароль."
   );
 }
+
+
+async function createFirstAccount() {
+
+  clearMessage();
+
+  if (!gumroadLicenseVerified || !gumroadLicenseEmail) {
+    showLicenseGate();
+    showError("Сначала подтвердите лицензионный ключ Gumroad.");
+    return;
+  }
+
+  const company =
+    document
+      .getElementById("firstRegisterCompany")
+      .value
+      .trim();
+
+  const password =
+    document
+      .getElementById("firstRegisterPassword")
+      .value;
+
+  const repeat =
+    document
+      .getElementById("firstRegisterPasswordRepeat")
+      .value;
+
+  if (!company || !password || !repeat) {
+    showError("Укажите название компании и дважды введите пароль.");
+    return;
+  }
+
+  if (password.length < 6) {
+    showError("Пароль должен содержать не менее 6 символов.");
+    return;
+  }
+
+  if (password !== repeat) {
+    showError("Пароли не совпадают.");
+    return;
+  }
+
+  showInfo("Создаём аккаунт...");
+
+  const { data, error } =
+    await sb.auth.signUp({
+      email: gumroadLicenseEmail,
+      password,
+      options: {
+        data: {
+          company_name: company,
+          registration_source: "gumroad_license"
+        },
+        emailRedirectTo:
+          window.location.origin +
+          window.location.pathname
+      }
+    });
+
+  if (error) {
+    const msg = String(error.message || "");
+
+    if (
+      msg.toLowerCase().includes("already") ||
+      msg.toLowerCase().includes("registered") ||
+      msg.toLowerCase().includes("exists")
+    ) {
+      showExistingLoginAfterLicense();
+      showError(
+        "Для этой почты аккаунт уже существует. Введите ранее созданный пароль."
+      );
+      return;
+    }
+
+    showError(
+      "Не удалось создать аккаунт: " + msg
+    );
+    return;
+  }
+
+  document
+    .getElementById("firstRegisterPassword")
+    .value = "";
+
+  document
+    .getElementById("firstRegisterPasswordRepeat")
+    .value = "";
+
+  if (data.session) {
+    showSuccess(
+      "Аккаунт создан. Следующий этап — создать и привязать карточку клиента."
+    );
+  } else {
+    showSuccess(
+      "Аккаунт создан. Проверьте почту и подтвердите email. После подтверждения вернитесь сюда и войдите."
+    );
+  }
+
+  document
+    .getElementById("firstRegistrationBlock")
+    .style.display = "none";
+
+  document
+    .getElementById("loginBlock")
+    .style.display = "block";
+
+  const loginEmail =
+    document.getElementById("email");
+
+  if (loginEmail) {
+    loginEmail.value = gumroadLicenseEmail;
+    loginEmail.readOnly = true;
+  }
+}
+
 
 async function verifyGumroadLicense() {
 
@@ -2014,7 +2227,7 @@ async function verifyGumroadLicense() {
       await sb.auth.signOut();
     }
 
-    showLoginAfterLicense(verifiedEmail);
+    showFirstRegistrationAfterLicense(verifiedEmail);
 
     const {
       data: { session: freshSession }
@@ -5496,7 +5709,7 @@ async function init() {
     await sb.auth.signOut();
   }
 
-  showLoginAfterLicense(
+  showFirstRegistrationAfterLicense(
     gumroadLicenseEmail
   );
 
