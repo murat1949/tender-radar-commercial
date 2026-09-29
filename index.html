@@ -860,52 +860,6 @@
       margin-top: 5px;
     }
 
-    .telegram-connect-steps {
-      margin: 10px 0 14px;
-      color: #475569;
-      line-height: 1.55;
-    }
-
-    .telegram-command-row {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) auto;
-      gap: 10px;
-      align-items: center;
-    }
-
-    .telegram-command-row input {
-      margin: 7px 0 8px;
-      font-family: Consolas, monospace;
-      background: #f8fafc;
-    }
-
-    .telegram-connect-status {
-      margin-top: 12px;
-      min-height: 20px;
-      color: #475569;
-      font-size: 14px;
-      line-height: 1.45;
-    }
-
-    .telegram-connect-status.waiting {
-      color: #1d4ed8;
-    }
-
-    .telegram-connect-status.ok {
-      color: #15803d;
-      font-weight: bold;
-    }
-
-    @media(max-width:560px) {
-      .telegram-command-row {
-        grid-template-columns: 1fr;
-      }
-
-      .telegram-command-row button {
-        width: 100%;
-      }
-    }
-
     .onboarding-card {
       background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
     }
@@ -1514,53 +1468,37 @@
 
         <h3>Подключение Telegram</h3>
 
-        <div class="telegram-connect-steps">
-          1. Скопируйте команду ниже.<br>
-          2. Откройте коммерческого Telegram-бота Tender Radar KZ.<br>
-          3. Отправьте боту эту команду. Chat ID определится автоматически.
+        <label>Название</label>
+        <input
+          id="telegramLabel"
+          type="text"
+          placeholder="Например: Tender Radar — Клининг"
+        >
+
+        <label>Chat ID</label>
+        <input
+          id="telegramChatId"
+          type="text"
+          placeholder="Например: 123456789"
+        >
+
+        <div class="hint">
+          Для текущего MVP используется Telegram Chat ID. Позже этот шаг можно заменить подключением через бота.
         </div>
-
-        <label>Команда для Telegram-бота</label>
-
-        <div class="telegram-command-row">
-          <input
-            id="telegramStartCommand"
-            type="text"
-            value=""
-            readonly
-            aria-label="Команда подключения Telegram"
-          >
-
-          <button
-            type="button"
-            class="primary"
-            onclick="copyTelegramCommand()"
-          >
-            Скопировать
-          </button>
-        </div>
-
-        <div class="hint" style="margin-top:2px">
-          Код одноразовый и действует 1 час. Никакой Chat ID вводить не нужно.
-        </div>
-
-        <div id="telegramConnectStatus" class="telegram-connect-status"></div>
 
         <div class="button-row">
           <button
-            type="button"
             class="success-button"
-            onclick="checkTelegramConnection(false)"
+            onclick="connectTelegram()"
           >
-            Проверить подключение
+            Сохранить подключение
           </button>
 
           <button
-            type="button"
             class="secondary"
             onclick="cancelTelegramConnect()"
           >
-            Закрыть
+            Отмена
           </button>
         </div>
 
@@ -1925,8 +1863,8 @@
 
 <script>
 
-// ===== Protocol 19: persistent Gumroad license binding =====
-// First activation: Gumroad key -> account -> license binding.
+// ===== Protocol 19.2: server-side Gumroad license binding =====
+// First activation: Gumroad key -> account -> secure server-side license binding.
 // Subsequent access: email + password only; validity is checked from commercial.clients.
 
 const SUPABASE_URL =
@@ -1958,13 +1896,6 @@ function normalizeEmail(value) {
   return String(value || "").trim().toLowerCase();
 }
 
-async function sha256Hex(value) {
-  const bytes = new TextEncoder().encode(String(value || ""));
-  const digest = await crypto.subtle.digest("SHA-256", bytes);
-  return Array.from(new Uint8Array(digest))
-    .map(b => b.toString(16).padStart(2, "0"))
-    .join("");
-}
 
 function savePendingLicenseMeta(meta) {
   gumroadLicenseMeta = meta || null;
@@ -2090,7 +2021,7 @@ function showLicenseActivation() {
 async function bindPendingLicenseToUser(user) {
   const meta = loadPendingLicenseMeta();
 
-  if (!meta || !meta.verified || !meta.email || !meta.license_key_hash) {
+  if (!meta || !meta.verified || !meta.email || !meta.license_key) {
     return { bound: false, skipped: true };
   }
 
@@ -2101,60 +2032,56 @@ async function bindPendingLicenseToUser(user) {
     throw new Error("Email аккаунта не совпадает с email покупателя Gumroad.");
   }
 
-  const { data: link, error: linkError } =
-    await db
-      .from("client_users")
-      .select("client_id")
-      .eq("auth_user_id", user.id)
-      .eq("active", true)
-      .single();
+  const {
+    data: { session }
+  } =
+    await sb.auth.getSession();
 
-  if (linkError || !link?.client_id) {
-    throw new Error(
-      "Карточка клиента ещё не создана. Обновите страницу через несколько секунд и войдите снова."
+  if (!session?.access_token) {
+    throw new Error("Сессия пользователя недействительна. Войдите снова.");
+  }
+
+  const response =
+    await fetch(
+      GUMROAD_VERIFY_URL,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer " + session.access_token
+        },
+        body: JSON.stringify({
+          license_key: meta.license_key,
+          bind: true
+        })
+      }
     );
+
+  let result = {};
+
+  try {
+    result = await response.json();
+  } catch (_) {
+    result = {};
   }
 
-  const { data: duplicate, error: duplicateError } =
-    await db
-      .from("clients")
-      .select("id")
-      .eq("license_key_hash", meta.license_key_hash)
-      .neq("id", link.client_id)
-      .limit(1);
-
-  if (duplicateError) {
-    throw duplicateError;
-  }
-
-  if (duplicate && duplicate.length) {
-    throw new Error("Этот лицензионный ключ уже привязан к другому аккаунту.");
-  }
-
-  const updateData = {
-    payment_provider: "gumroad",
-    license_key_hash: meta.license_key_hash,
-    license_verified_at: meta.verified_at || new Date().toISOString(),
-    gumroad_purchase_at: meta.purchase_date || null,
-    expires_at: meta.paid_until || null,
-    payment_status: "active"
-  };
-
-  const { error: updateError } =
-    await db
-      .from("clients")
-      .update(updateData)
-      .eq("id", link.client_id);
-
-  if (updateError) {
-    throw updateError;
+  if (
+    !response.ok ||
+    !result ||
+    result.success !== true ||
+    result.bound !== true
+  ) {
+    throw new Error(
+      result?.error ||
+      "Не удалось привязать лицензию к аккаунту."
+    );
   }
 
   clearPendingLicenseMeta();
 
   return {
     bound: true,
-    client_id: link.client_id
+    client_id: result.client_id || null
   };
 }
 
@@ -2491,13 +2418,10 @@ async function verifyGumroadLicense() {
     const verifiedEmail =
       normalizeEmail(result.email);
 
-    const licenseHash =
-      await sha256Hex(licenseKey);
-
     savePendingLicenseMeta({
       verified: true,
       email: verifiedEmail,
-      license_key_hash: licenseHash,
+      license_key: licenseKey,
       purchase_date: result.purchase_date || null,
       paid_until: result.paid_until || null,
       verified_at: new Date().toISOString(),
@@ -3783,9 +3707,6 @@ function radarApplyFilters(resetLimit) {
 
 }
 let currentTelegramCount = 0;
-let telegramConnectToken = "";
-let telegramConnectExpiresAt = null;
-let telegramConnectPollTimer = null;
 let availableSources = [];
 
 
@@ -4615,8 +4536,6 @@ async function login() {
 
 async function logout() {
 
-  stopTelegramConnectPolling();
-
   await sb.auth.signOut();
 
   currentClientId = null;
@@ -4654,56 +4573,11 @@ async function logout() {
 
 
 
-function generateTelegramConnectToken() {
-
-  const randomBytes = new Uint8Array(12);
-  crypto.getRandomValues(randomBytes);
-
-  const randomPart =
-    Array.from(randomBytes)
-      .map(byte => byte.toString(16).padStart(2, "0"))
-      .join("");
-
-  return (
-    "tr-" +
-    String(currentClientId) +
-    "-" +
-    randomPart
-  );
-}
-
-
-function stopTelegramConnectPolling() {
-
-  if (telegramConnectPollTimer) {
-    clearInterval(telegramConnectPollTimer);
-    telegramConnectPollTimer = null;
-  }
-}
-
-
-function setTelegramConnectStatus(text, state) {
-
-  const el =
-    document.getElementById("telegramConnectStatus");
-
-  if (!el) {
-    return;
-  }
-
-  el.textContent = text || "";
-  el.className =
-    "telegram-connect-status" +
-    (state ? " " + state : "");
-}
-
-
-async function showTelegramConnect() {
+function showTelegramConnect() {
 
   clearMessage();
-  stopTelegramConnectPolling();
 
-  if (!currentClientId || !currentClient) {
+  if (!currentClient) {
     showError("Не удалось определить клиента.");
     return;
   }
@@ -4726,202 +4600,128 @@ async function showTelegramConnect() {
     return;
   }
 
-  const form =
-    document.getElementById("telegramConnectForm");
+  document
+    .getElementById("telegramConnectForm")
+    .style.display = "block";
 
-  const button =
-    document.getElementById("connectTelegramButton");
-
-  const commandInput =
-    document.getElementById("telegramStartCommand");
-
-  if (form) {
-    form.style.display = "block";
-  }
-
-  if (button) {
-    button.style.display = "none";
-    button.disabled = true;
-  }
-
-  if (commandInput) {
-    commandInput.value = "Создаём одноразовый код...";
-  }
-
-  setTelegramConnectStatus(
-    "Создаём безопасный одноразовый код подключения...",
-    "waiting"
-  );
-
-  telegramConnectToken =
-    generateTelegramConnectToken();
-
-  telegramConnectExpiresAt =
-    new Date(
-      Date.now() + 60 * 60 * 1000
-    );
-
-  const {
-    error: tokenError
-  } =
-    await db
-      .from("telegram_connect_tokens")
-      .insert({
-        client_id: currentClientId,
-        token: telegramConnectToken,
-        expires_at: telegramConnectExpiresAt.toISOString()
-      });
-
-  if (tokenError) {
-
-    telegramConnectToken = "";
-    telegramConnectExpiresAt = null;
-
-    if (commandInput) {
-      commandInput.value = "";
-    }
-
-    setTelegramConnectStatus(
-      "Не удалось создать код подключения.",
-      ""
-    );
-
-    if (button) {
-      button.style.display = "inline-block";
-      button.disabled = false;
-    }
-
-    showError(
-      "Не удалось создать код Telegram: " +
-      tokenError.message
-    );
-
-    return;
-  }
-
-  const command =
-    "/start " + telegramConnectToken;
-
-  if (commandInput) {
-    commandInput.value = command;
-  }
-
-  setTelegramConnectStatus(
-    "Код готов. Отправьте команду боту — кабинет сам проверит подключение.",
-    "waiting"
-  );
-
-  showInfo(
-    "Код Telegram создан. Отправьте команду /start из блока подключения коммерческому боту Tender Radar KZ."
-  );
-
-  telegramConnectPollTimer =
-    setInterval(
-      () => checkTelegramConnection(true),
-      4000
-    );
-
+  document
+    .getElementById("connectTelegramButton")
+    .style.display = "none";
 }
 
 
 function cancelTelegramConnect() {
 
-  stopTelegramConnectPolling();
-
   document
     .getElementById("telegramConnectForm")
     .style.display = "none";
 
-  setTelegramConnectStatus("", "");
-
-  const commandInput =
-    document.getElementById("telegramStartCommand");
-
-  if (commandInput) {
-    commandInput.value = "";
-  }
-
-  telegramConnectToken = "";
-  telegramConnectExpiresAt = null;
-
-  const button =
-    document.getElementById("connectTelegramButton");
-
-  if (button && currentTelegramCount === 0) {
-    button.style.display = "inline-block";
-    button.disabled = false;
+  if (currentTelegramCount === 0) {
+    document
+      .getElementById("connectTelegramButton")
+      .style.display = "inline-block";
   }
 }
 
 
-async function copyTelegramCommand() {
+async function connectTelegram() {
 
-  const input =
-    document.getElementById("telegramStartCommand");
+  clearMessage();
 
-  const command =
-    String(input?.value || "").trim();
-
-  if (!command || !command.startsWith("/start ")) {
-    showError("Команда подключения ещё не создана.");
+  if (!currentClientId || !currentClient) {
+    showError("Не удалось определить клиента.");
     return;
   }
 
-  try {
-
-    await navigator.clipboard.writeText(command);
-
-    setTelegramConnectStatus(
-      "Команда скопирована. Вставьте её в чат с коммерческим ботом Tender Radar KZ.",
-      "waiting"
+  if (!accessIsActive()) {
+    showError(
+      "Подключение Telegram недоступно: тариф не активен или срок действия истёк."
     );
-
-  } catch (_) {
-
-    if (input) {
-      input.focus();
-      input.select();
-    }
-
-    setTelegramConnectStatus(
-      "Выделил команду. Нажмите Ctrl+C, затем вставьте её в Telegram.",
-      "waiting"
-    );
+    return;
   }
-}
 
+  const label =
+    document
+      .getElementById("telegramLabel")
+      .value
+      .trim();
 
-async function checkTelegramConnection(silent = false) {
+  const chatId =
+    document
+      .getElementById("telegramChatId")
+      .value
+      .trim();
 
-  if (!currentClientId || !currentClient) {
-    if (!silent) {
-      showError("Не удалось определить клиента.");
-    }
-    return false;
+  if (!chatId) {
+    showError("Введите Telegram Chat ID.");
+    return;
   }
+
+  const limit = currentClient.telegram_limit;
 
   const {
-    data: telegrams,
+    data: existingTelegrams,
+    error: countError
+  } =
+    await db
+      .from("telegram_destinations")
+      .select("id")
+      .eq("client_id", currentClientId)
+      .eq("active", true);
+
+  if (countError) {
+    showError(
+      "Не удалось проверить лимит Telegram: " +
+      countError.message
+    );
+    return;
+  }
+
+  if (
+    limit !== null &&
+    limit !== undefined &&
+    existingTelegrams.length >= Number(limit)
+  ) {
+    showError("Достигнут лимит Telegram для вашего тарифа.");
+    return;
+  }
+
+  showInfo("Подключаем Telegram...");
+
+  const {
+    data,
     error
   } =
     await db
       .from("telegram_destinations")
-      .select("*")
-      .eq("client_id", currentClientId)
-      .eq("active", true);
+      .insert({
+        client_id: currentClientId,
+        chat_id: chatId,
+        label: label || "Telegram",
+        active: true
+      })
+      .select()
+      .single();
 
   if (error) {
-    if (!silent) {
-      showError(
-        "Не удалось проверить Telegram: " +
-        error.message
-      );
-    }
-    return false;
+    showError(
+      "Не удалось подключить Telegram: " +
+      error.message
+    );
+    return;
   }
 
   currentTelegramCount =
-    telegrams.length;
+    existingTelegrams.length + 1;
+
+  document
+    .getElementById("telegram")
+    .textContent =
+    data.label || "Подключён";
+
+  document
+    .getElementById("telegramStatus")
+    .textContent = "ON";
 
   document
     .getElementById("planTelegram")
@@ -4933,46 +4733,10 @@ async function checkTelegramConnection(silent = false) {
       "—"
     );
 
-  if (!telegrams.length) {
-
-    if (
-      telegramConnectExpiresAt &&
-      new Date() > telegramConnectExpiresAt
-    ) {
-      stopTelegramConnectPolling();
-      setTelegramConnectStatus(
-        "Срок действия кода истёк. Закройте окно и нажмите «Подключить Telegram» ещё раз.",
-        ""
-      );
-    } else if (!silent) {
-      setTelegramConnectStatus(
-        "Пока не подключено. Отправьте показанную команду боту и нажмите «Проверить подключение» ещё раз.",
-        "waiting"
-      );
-    }
-
-    return false;
-  }
-
-  const telegram =
-    telegrams[0];
-
-  stopTelegramConnectPolling();
-
-  document
-    .getElementById("telegram")
-    .textContent =
-    telegram.label ||
-    "Подключён";
-
-  document
-    .getElementById("telegramStatus")
-    .textContent = "ON";
-
   document
     .getElementById("telegramConnectionState")
     .textContent =
-    (telegram.label || "Telegram") +
+    (data.label || "Telegram") +
     " — подключён";
 
   document
@@ -4984,16 +4748,9 @@ async function checkTelegramConnection(silent = false) {
     .getElementById("telegramConnectForm")
     .style.display = "none";
 
-  const button =
-    document.getElementById("connectTelegramButton");
-
-  if (button) {
-    button.style.display = "none";
-    button.disabled = false;
-  }
-
-  telegramConnectToken = "";
-  telegramConnectExpiresAt = null;
+  document
+    .getElementById("connectTelegramButton")
+    .style.display = "none";
 
   updateOnboarding(
     currentProfile ? 1 : 0,
@@ -5001,15 +4758,8 @@ async function checkTelegramConnection(silent = false) {
   );
 
   showSuccess(
-    "Telegram успешно подключён. Теперь сюда будут приходить уведомления о подходящих тендерах."
+    "Telegram подключён. Уведомления можно отправлять в этот чат."
   );
-
-  return true;
-}
-
-
-async function connectTelegram() {
-  return showTelegramConnect();
 }
 
 
