@@ -5945,11 +5945,10 @@ async function openCabinet(user) {
     }
 
 
-    document
-      .getElementById("loginBlock")
-      .style.display =
-      "none";
-
+    // Protocol 20.1: once an authenticated client cabinet is opened,
+    // hide ALL auth/activation blocks. This prevents the Gumroad
+    // license form from reappearing above the cabinet after F5.
+    hideAuthBlocks();
 
     document
       .getElementById("cabinet")
