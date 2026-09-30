@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
+  <!-- Protocol 20: automatic Telegram binding via official Telegram Login Widget; existing commercial-telegram-connect Edge Function reused -->
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
@@ -1419,9 +1420,9 @@
 
         <div id="onboardingStep2" class="onboarding-step waiting">
           <div class="onboarding-number">2</div>
-          <div class="onboarding-title">Подключите Telegram</div>
+          <div class="onboarding-title">Telegram — по желанию</div>
           <div class="onboarding-text">
-            Получайте уведомления о новых подходящих тендерах сразу после появления.
+            Подключите Telegram для автоматических уведомлений или выберите «Пока не нужно».
           </div>
           <div id="onboardingStatus2" class="onboarding-status waiting">Ожидает</div>
         </div>
@@ -1450,17 +1451,27 @@
             Не подключён
           </div>
           <div class="hint" style="margin-top:8px;margin-bottom:0">
-            Подключите Telegram, чтобы получать уведомления о новых подходящих тендерах.
+            Telegram — необязательный канал. Подключите его, если хотите получать автоматические уведомления о новых подходящих тендерах.
           </div>
         </div>
 
-        <button
-          id="connectTelegramButton"
-          class="success-button"
-          onclick="showTelegramConnect()"
-        >
-          Подключить Telegram
-        </button>
+        <div class="button-row" style="margin-top:0">
+          <button
+            id="connectTelegramButton"
+            class="success-button"
+            onclick="showTelegramConnect()"
+          >
+            Подключить Telegram
+          </button>
+
+          <button
+            id="skipTelegramButton"
+            class="secondary"
+            onclick="skipTelegram()"
+          >
+            Пока не нужно
+          </button>
+        </div>
 
       </div>
 
@@ -1468,32 +1479,23 @@
 
         <h3>Подключение Telegram</h3>
 
-        <label>Название</label>
-        <input
-          id="telegramLabel"
-          type="text"
-          placeholder="Например: Tender Radar — Клининг"
-        >
-
-        <label>Chat ID</label>
-        <input
-          id="telegramChatId"
-          type="text"
-          placeholder="Например: 123456789"
-        >
-
-        <div class="hint">
-          Для текущего MVP используется Telegram Chat ID. Позже этот шаг можно заменить подключением через бота.
+        <div class="hint" style="margin-bottom:14px">
+          Нажмите официальную кнопку Telegram ниже. Telegram сам предложит подтвердить нужный аккаунт. Никакой Chat ID вводить не нужно.
         </div>
 
-        <div class="button-row">
-          <button
-            class="success-button"
-            onclick="connectTelegram()"
-          >
-            Сохранить подключение
-          </button>
+        <div id="telegramOfficialLogin">
+          <script
+            async
+            src="https://telegram.org/js/telegram-widget.js?22"
+            data-telegram-login="mn_tender_radar_bot"
+            data-size="large"
+            data-userpic="false"
+            data-request-access="write"
+            data-onauth="onTelegramAuth(user)"
+          ></script>
+        </div>
 
+        <div class="button-row" style="margin-top:14px">
           <button
             class="secondary"
             onclick="cancelTelegramConnect()"
@@ -1505,7 +1507,6 @@
       </div>
 
     </div>
-
 
     <div class="card">
 
@@ -1885,6 +1886,11 @@ const db =
 
 const GUMROAD_VERIFY_URL =
   "https://ilfxyvsqintvjbifqxvr.supabase.co/functions/v1/gumroad-license-verify";
+
+// Protocol 20 — server-side Telegram binding.
+// Bot token stays only in Supabase Edge Function secrets.
+const TELEGRAM_BIND_URL =
+  "https://ilfxyvsqintvjbifqxvr.supabase.co/functions/v1/commercial-telegram-connect";
 
 let gumroadLicenseVerified = false;
 let gumroadLicenseEmail = "";
@@ -3707,6 +3713,7 @@ function radarApplyFilters(resetLimit) {
 
 }
 let currentTelegramCount = 0;
+let currentTelegramOptOut = false;
 let availableSources = [];
 
 
@@ -3967,7 +3974,7 @@ function setOnboardingStep(stepNumber, state, text) {
 }
 
 
-function updateOnboarding(profileCount, telegramCount) {
+function updateOnboarding(profileCount, telegramCount, telegramOptOut = false) {
 
   const hasProfile =
     Number(profileCount || 0) > 0;
@@ -3975,54 +3982,35 @@ function updateOnboarding(profileCount, telegramCount) {
   const hasTelegram =
     Number(telegramCount || 0) > 0;
 
+  const telegramDecisionMade =
+    hasTelegram || Boolean(telegramOptOut);
+
   if (hasProfile) {
-    setOnboardingStep(
-      1,
-      "done",
-      "Готово ✓"
-    );
+    setOnboardingStep(1, "done", "Готово ✓");
   } else {
-    setOnboardingStep(
-      1,
-      "current",
-      "Сделайте сейчас"
-    );
+    setOnboardingStep(1, "current", "Сделайте сейчас");
   }
 
   if (hasTelegram) {
-    setOnboardingStep(
-      2,
-      "done",
-      "Готово ✓"
-    );
+    setOnboardingStep(2, "done", "Подключён ✓");
+  } else if (telegramOptOut) {
+    setOnboardingStep(2, "done", "Не нужен ✓");
   } else if (hasProfile) {
-    setOnboardingStep(
-      2,
-      "current",
-      "Следующий шаг"
-    );
+    setOnboardingStep(2, "current", "По желанию");
   } else {
-    setOnboardingStep(
-      2,
-      "waiting",
-      "После шага 1"
-    );
+    setOnboardingStep(2, "waiting", "После шага 1");
   }
 
   if (hasProfile) {
     setOnboardingStep(
       3,
-      hasTelegram ? "done" : "current",
-      hasTelegram
+      telegramDecisionMade ? "done" : "current",
+      telegramDecisionMade
         ? "Система настроена ✓"
         : "Поиск уже работает"
     );
   } else {
-    setOnboardingStep(
-      3,
-      "waiting",
-      "После создания профиля"
-    );
+    setOnboardingStep(3, "waiting", "После создания профиля");
   }
 }
 
@@ -4573,6 +4561,49 @@ async function logout() {
 
 
 
+async function callTelegramBind(payload) {
+
+  const {
+    data: { session },
+    error: sessionError
+  } = await sb.auth.getSession();
+
+  if (sessionError || !session?.access_token) {
+    throw new Error("Сессия пользователя недействительна. Войдите снова.");
+  }
+
+  const response = await fetch(
+    TELEGRAM_BIND_URL,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer " + session.access_token
+      },
+      body: JSON.stringify(payload || {})
+    }
+  );
+
+  let result = {};
+
+  try {
+    result = await response.json();
+  } catch (_) {
+    result = {};
+  }
+
+  if (!response.ok || !result.success) {
+    throw new Error(
+      result.error ||
+      result.message ||
+      "Не удалось сохранить настройки Telegram."
+    );
+  }
+
+  return result;
+}
+
+
 function showTelegramConnect() {
 
   clearMessage();
@@ -4607,6 +4638,10 @@ function showTelegramConnect() {
   document
     .getElementById("connectTelegramButton")
     .style.display = "none";
+
+  document
+    .getElementById("skipTelegramButton")
+    .style.display = "none";
 }
 
 
@@ -4620,11 +4655,94 @@ function cancelTelegramConnect() {
     document
       .getElementById("connectTelegramButton")
       .style.display = "inline-block";
+
+    document
+      .getElementById("skipTelegramButton")
+      .style.display = currentTelegramOptOut
+        ? "none"
+        : "inline-block";
   }
 }
 
 
-async function connectTelegram() {
+async function onTelegramAuth(user) {
+
+  clearMessage();
+
+  if (!user || !user.id || !user.hash) {
+    showError("Telegram не вернул данные авторизации.");
+    return;
+  }
+
+  try {
+    showInfo("Проверяем Telegram и сохраняем подключение...");
+
+    const bound = await callTelegramBind({
+      action: "connect",
+      telegram: user
+    });
+
+    currentTelegramCount = 1;
+    currentTelegramOptOut = false;
+    currentClient.telegram_opt_out = false;
+
+    const label = bound.label || "Telegram";
+
+    document
+      .getElementById("telegram")
+      .textContent = label;
+
+    document
+      .getElementById("telegramStatus")
+      .textContent = "ON";
+
+    document
+      .getElementById("planTelegram")
+      .textContent =
+      currentTelegramCount +
+      " / " +
+      (currentClient.telegram_limit ?? "—");
+
+    document
+      .getElementById("telegramConnectionState")
+      .textContent = label + " — подключён";
+
+    document
+      .getElementById("telegramConnectionState")
+      .className = "telegram-state on";
+
+    document
+      .getElementById("telegramConnectForm")
+      .style.display = "none";
+
+    document
+      .getElementById("connectTelegramButton")
+      .style.display = "none";
+
+    document
+      .getElementById("skipTelegramButton")
+      .style.display = "none";
+
+    updateOnboarding(
+      currentProfile ? 1 : 0,
+      currentTelegramCount,
+      currentTelegramOptOut
+    );
+
+    showSuccess(
+      "Telegram подключён автоматически. Проверочное сообщение отправлено в выбранный Telegram-аккаунт."
+    );
+
+  } catch (error) {
+    showError(
+      "Не удалось подключить Telegram: " +
+      (error?.message || String(error))
+    );
+  }
+}
+
+
+async function skipTelegram() {
 
   clearMessage();
 
@@ -4633,133 +4751,65 @@ async function connectTelegram() {
     return;
   }
 
-  if (!accessIsActive()) {
-    showError(
-      "Подключение Telegram недоступно: тариф не активен или срок действия истёк."
-    );
-    return;
-  }
+  try {
+    showInfo("Сохраняем выбор: уведомления Telegram не нужны...");
 
-  const label =
+    await callTelegramBind({ action: "skip" });
+
+    currentTelegramCount = 0;
+    currentTelegramOptOut = true;
+    currentClient.telegram_opt_out = true;
+
     document
-      .getElementById("telegramLabel")
-      .value
-      .trim();
+      .getElementById("telegram")
+      .textContent = "Не требуется";
 
-  const chatId =
     document
-      .getElementById("telegramChatId")
-      .value
-      .trim();
+      .getElementById("telegramStatus")
+      .textContent = "OFF";
 
-  if (!chatId) {
-    showError("Введите Telegram Chat ID.");
-    return;
-  }
+    document
+      .getElementById("planTelegram")
+      .textContent =
+      "0 / " +
+      (currentClient.telegram_limit ?? "—");
 
-  const limit = currentClient.telegram_limit;
+    document
+      .getElementById("telegramConnectionState")
+      .textContent = "Уведомления Telegram отключены по вашему выбору";
 
-  const {
-    data: existingTelegrams,
-    error: countError
-  } =
-    await db
-      .from("telegram_destinations")
-      .select("id")
-      .eq("client_id", currentClientId)
-      .eq("active", true);
+    document
+      .getElementById("telegramConnectionState")
+      .className = "telegram-state";
 
-  if (countError) {
+    document
+      .getElementById("telegramConnectForm")
+      .style.display = "none";
+
+    document
+      .getElementById("connectTelegramButton")
+      .style.display = "inline-block";
+
+    document
+      .getElementById("skipTelegramButton")
+      .style.display = "none";
+
+    updateOnboarding(
+      currentProfile ? 1 : 0,
+      currentTelegramCount,
+      currentTelegramOptOut
+    );
+
+    showSuccess(
+      "Хорошо. Telegram не подключаем. Радар продолжит работать, а найденные тендеры останутся доступны в кабинете. Подключить Telegram можно позже."
+    );
+
+  } catch (error) {
     showError(
-      "Не удалось проверить лимит Telegram: " +
-      countError.message
+      "Не удалось сохранить выбор Telegram: " +
+      (error?.message || String(error))
     );
-    return;
   }
-
-  if (
-    limit !== null &&
-    limit !== undefined &&
-    existingTelegrams.length >= Number(limit)
-  ) {
-    showError("Достигнут лимит Telegram для вашего тарифа.");
-    return;
-  }
-
-  showInfo("Подключаем Telegram...");
-
-  const {
-    data,
-    error
-  } =
-    await db
-      .from("telegram_destinations")
-      .insert({
-        client_id: currentClientId,
-        chat_id: chatId,
-        label: label || "Telegram",
-        active: true
-      })
-      .select()
-      .single();
-
-  if (error) {
-    showError(
-      "Не удалось подключить Telegram: " +
-      error.message
-    );
-    return;
-  }
-
-  currentTelegramCount =
-    existingTelegrams.length + 1;
-
-  document
-    .getElementById("telegram")
-    .textContent =
-    data.label || "Подключён";
-
-  document
-    .getElementById("telegramStatus")
-    .textContent = "ON";
-
-  document
-    .getElementById("planTelegram")
-    .textContent =
-    currentTelegramCount +
-    " / " +
-    (
-      currentClient.telegram_limit ??
-      "—"
-    );
-
-  document
-    .getElementById("telegramConnectionState")
-    .textContent =
-    (data.label || "Telegram") +
-    " — подключён";
-
-  document
-    .getElementById("telegramConnectionState")
-    .className =
-    "telegram-state on";
-
-  document
-    .getElementById("telegramConnectForm")
-    .style.display = "none";
-
-  document
-    .getElementById("connectTelegramButton")
-    .style.display = "none";
-
-  updateOnboarding(
-    currentProfile ? 1 : 0,
-    currentTelegramCount
-  );
-
-  showSuccess(
-    "Telegram подключён. Уведомления можно отправлять в этот чат."
-  );
 }
 
 
@@ -5326,6 +5376,7 @@ async function openCabinet(user) {
 
 
     currentClient = client;
+    currentTelegramOptOut = Boolean(client.telegram_opt_out);
 
     if (!accessIsActive()) {
       const expired =
@@ -5647,12 +5698,17 @@ async function openCabinet(user) {
         .style.display =
         "none";
 
+      document
+        .getElementById("skipTelegramButton")
+        .style.display =
+        "none";
+
     } else {
 
       document
         .getElementById("telegram")
         .textContent =
-        "Не подключён";
+        currentTelegramOptOut ? "Не требуется" : "Не подключён";
 
 
       document
@@ -5663,7 +5719,9 @@ async function openCabinet(user) {
       document
         .getElementById("telegramConnectionState")
         .textContent =
-        "Не подключён";
+        currentTelegramOptOut
+          ? "Уведомления Telegram отключены по вашему выбору"
+          : "Не подключён";
 
       document
         .getElementById("telegramConnectionState")
@@ -5676,6 +5734,11 @@ async function openCabinet(user) {
         "inline-block";
 
       document
+        .getElementById("skipTelegramButton")
+        .style.display =
+        currentTelegramOptOut ? "none" : "inline-block";
+
+      document
         .getElementById("telegramConnectForm")
         .style.display =
         "none";
@@ -5684,7 +5747,8 @@ async function openCabinet(user) {
 
     updateOnboarding(
       profiles.length,
-      telegrams.length
+      telegrams.length,
+      currentTelegramOptOut
     );
 
 
