@@ -509,6 +509,75 @@
       opacity: .85;
     }
 
+
+
+    /* ===== Protocol 20.2: client feedback ===== */
+    .feedback-card {
+      border: 1px solid #dbeafe;
+      background: linear-gradient(135deg, #ffffff 0%, #f8fbff 100%);
+    }
+
+    .feedback-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    .feedback-head h3 {
+      margin: 0 0 6px;
+      color: #0f3b66;
+    }
+
+    .feedback-head p {
+      margin: 0;
+      color: #64748b;
+    }
+
+    .feedback-form {
+      display: none;
+      margin-top: 18px;
+      padding-top: 18px;
+      border-top: 1px solid #e2e8f0;
+    }
+
+    .feedback-form select {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 12px;
+      margin: 7px 0 15px;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      background: white;
+      color: #1f2937;
+      font-size: 15px;
+      font-family: Arial, sans-serif;
+    }
+
+    .feedback-local-message {
+      margin-top: 12px;
+      font-size: 14px;
+    }
+
+    .feedback-local-message.ok {
+      color: #15803d;
+    }
+
+    .feedback-local-message.err {
+      color: #b91c1c;
+    }
+
+    @media(max-width:560px) {
+      .feedback-head {
+        align-items: stretch;
+        flex-direction: column;
+      }
+
+      .feedback-head button {
+        width: 100%;
+      }
+    }
+
     @media(max-width:560px) {
       .radar-work-btn {
         flex: 1 1 calc(50% - 8px);
@@ -1850,6 +1919,50 @@
 
       </div>
 
+    </div>
+
+
+    <!-- Protocol 20.2: feedback for errors and suggestions -->
+    <div class="card feedback-card">
+      <div class="feedback-head">
+        <div>
+          <h3>Обратная связь</h3>
+          <p>Сообщить об ошибке или оставить предложение.</p>
+        </div>
+
+        <button
+          id="feedbackToggleBtn"
+          class="secondary"
+          onclick="toggleFeedbackForm()"
+        >
+          Сообщить
+        </button>
+      </div>
+
+      <div id="feedbackForm" class="feedback-form">
+        <label for="feedbackKind"><strong>Тип сообщения</strong></label>
+        <select id="feedbackKind">
+          <option value="error">Ошибка</option>
+          <option value="suggestion">Предложение</option>
+        </select>
+
+        <label for="feedbackText"><strong>Сообщение</strong></label>
+        <textarea
+          id="feedbackText"
+          maxlength="2000"
+          placeholder="Кратко опишите, что произошло или что вы предлагаете улучшить"
+        ></textarea>
+
+        <button
+          id="feedbackSendBtn"
+          class="primary"
+          onclick="submitFeedback()"
+        >
+          Отправить
+        </button>
+
+        <div id="feedbackLocalMessage" class="feedback-local-message"></div>
+      </div>
     </div>
 
   </div>
@@ -5307,6 +5420,103 @@ async function saveProfile() {
     "Профиль поиска сохранён."
   );
 
+}
+
+
+
+
+// ===== Protocol 20.2: client feedback =====
+function setFeedbackLocalMessage(text, isError = false) {
+  const el = document.getElementById("feedbackLocalMessage");
+  if (!el) return;
+
+  el.textContent = text || "";
+  el.className =
+    "feedback-local-message" +
+    (text ? (isError ? " err" : " ok") : "");
+}
+
+
+function toggleFeedbackForm() {
+  const form = document.getElementById("feedbackForm");
+  const button = document.getElementById("feedbackToggleBtn");
+  if (!form || !button) return;
+
+  const willOpen = form.style.display !== "block";
+  form.style.display = willOpen ? "block" : "none";
+  button.textContent = willOpen ? "Закрыть" : "Сообщить";
+
+  if (willOpen) {
+    setFeedbackLocalMessage("");
+    const text = document.getElementById("feedbackText");
+    if (text) text.focus();
+  }
+}
+
+
+async function submitFeedback() {
+  const kindEl = document.getElementById("feedbackKind");
+  const textEl = document.getElementById("feedbackText");
+  const button = document.getElementById("feedbackSendBtn");
+
+  if (!currentClientId) {
+    setFeedbackLocalMessage(
+      "Не удалось определить клиента. Обновите страницу и войдите снова.",
+      true
+    );
+    return;
+  }
+
+  const kind = kindEl ? kindEl.value : "error";
+  const message = textEl ? textEl.value.trim() : "";
+
+  if (message.length < 3) {
+    setFeedbackLocalMessage(
+      "Напишите сообщение длиной не менее 3 символов.",
+      true
+    );
+    if (textEl) textEl.focus();
+    return;
+  }
+
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Отправляем...";
+  }
+
+  setFeedbackLocalMessage("");
+
+  try {
+    const { error } = await db
+      .from("feedback_messages")
+      .insert({
+        client_id: currentClientId,
+        kind: kind,
+        message: message
+      });
+
+    if (error) {
+      throw error;
+    }
+
+    if (textEl) textEl.value = "";
+    setFeedbackLocalMessage(
+      "Спасибо. Сообщение отправлено."
+    );
+
+  } catch (error) {
+    console.error(error);
+    setFeedbackLocalMessage(
+      "Не удалось отправить сообщение. Попробуйте ещё раз позже.",
+      true
+    );
+
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = "Отправить";
+    }
+  }
 }
 
 
