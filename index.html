@@ -1094,6 +1094,15 @@
         grid-template-columns: 1fr;
       }
     }
+
+    /* Pagination: fixed 10 tenders per page, no growing list */
+    .radar-pagination { display:flex; justify-content:center; align-items:center; flex-wrap:wrap; gap:7px; margin-top:20px; }
+    .radar-page-btn { background:#fff; border:1px solid #bfdbfe; color:#155e9a; border-radius:9px; padding:9px 12px; font-size:13px; font-weight:700; min-width:36px; }
+    .radar-page-btn:hover:not(:disabled) { background:#eff6ff; border-color:#60a5fa; }
+    .radar-page-btn.active { background:#155e9a; color:#fff; border-color:#155e9a; }
+    .radar-page-btn:disabled { opacity:.42; cursor:default; }
+    .radar-page-dots { color:#64748b; padding:0 3px; }
+    .radar-page-counter { color:#64748b; font-size:12px; flex-basis:100%; text-align:center; margin-top:4px; }
   </style>
 </head>
 
@@ -1919,16 +1928,7 @@
           Загрузка...
         </div>
 
-        <div class="radar-more-wrap">
-          <button
-            id="radarMoreBtn"
-            class="radar-more-btn"
-            onclick="radarShowMore()"
-            style="display:none"
-          >
-            Показать ещё
-          </button>
-        </div>
+        <nav class="radar-pagination" id="radarPagination" aria-label="Страницы тендеров"></nav>
 
       </div>
 
@@ -2619,8 +2619,9 @@ let radarTenderItems = [];
 let radarPeriod = "all";
 let radarWorkFilter = "all";
 let radarExpiredHidden = 0;
-let radarVisibleLimit = 6;
-const radarPageSize = 6;
+let radarVisibleLimit = 10;
+const radarPageSize = 10;
+let radarCurrentPage = 1;
 
 // Время для сроков и фильтров всегда сравнивается как UTC timestamp.
 // Показываем время UTC+6 для согласования с часами пользователя; UTC timestamps не меняем.
@@ -2736,6 +2737,7 @@ function radarSetPeriod(period) {
 
   radarVisibleLimit =
     radarPageSize;
+  radarCurrentPage = 1;
 
   document
     .querySelectorAll(
@@ -2764,6 +2766,7 @@ function radarSetWorkFilter(filter) {
 
   radarVisibleLimit =
     radarPageSize;
+  radarCurrentPage = 1;
 
   document
     .querySelectorAll("[data-radar-work]")
@@ -3625,21 +3628,63 @@ function radarBuildTenderCard(item) {
 
 }
 
-function radarShowMore() {
-
-  radarVisibleLimit +=
-    radarPageSize;
-
+function radarGoToPage(page) {
+  const next = Number(page);
+  if (!Number.isInteger(next) || next < 1) return;
+  radarCurrentPage = next;
   radarApplyFilters(false);
+  const panel = document.querySelector('.radar-toolbar');
+  if (panel) panel.scrollIntoView({behavior: 'smooth', block: 'start'});
+}
 
+function radarRenderPagination(total) {
+  const nav = document.getElementById('radarPagination');
+  if (!nav) return;
+  nav.innerHTML = '';
+  const pages = Math.ceil(total / radarPageSize);
+  if (pages <= 1) return;
+
+  function addButton(label, page, disabled, active) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'radar-page-btn' + (active ? ' active' : '');
+    btn.textContent = label;
+    btn.disabled = disabled;
+    if (active) btn.setAttribute('aria-current', 'page');
+    btn.addEventListener('click', () => radarGoToPage(page));
+    nav.appendChild(btn);
+  }
+  function addDots() {
+    const span = document.createElement('span');
+    span.className = 'radar-page-dots';
+    span.textContent = '…';
+    nav.appendChild(span);
+  }
+
+  addButton('← Назад', radarCurrentPage - 1, radarCurrentPage === 1, false);
+  const candidates = new Set([1, pages]);
+  for (let i = radarCurrentPage - 2; i <= radarCurrentPage + 2; i++) {
+    if (i >= 1 && i <= pages) candidates.add(i);
+  }
+  const visible = Array.from(candidates).sort((a,b) => a-b);
+  let last = 0;
+  for (const page of visible) {
+    if (page - last > 1) addDots();
+    addButton(String(page), page, false, page === radarCurrentPage);
+    last = page;
+  }
+  addButton('Вперёд →', radarCurrentPage + 1, radarCurrentPage === pages, false);
+  const counter = document.createElement('span');
+  counter.className = 'radar-page-counter';
+  counter.textContent = 'Страница ' + radarCurrentPage + ' из ' + pages;
+  nav.appendChild(counter);
 }
 
 
 function radarApplyFilters(resetLimit) {
 
   if (resetLimit === true) {
-    radarVisibleLimit =
-      radarPageSize;
+    radarCurrentPage = 1;
   }
 
   const box =
@@ -3800,6 +3845,10 @@ function radarApplyFilters(resetLimit) {
     }
   );
 
+  const pageCount = Math.max(1, Math.ceil(items.length / radarPageSize));
+  radarCurrentPage = Math.min(Math.max(1, radarCurrentPage), pageCount);
+  const pageStart = (radarCurrentPage - 1) * radarPageSize;
+  const shownCount = Math.min(radarPageSize, Math.max(0, items.length - pageStart));
   box.innerHTML = "";
 
   if (!items.length) {
@@ -3819,64 +3868,12 @@ function radarApplyFilters(resetLimit) {
 
   } else {
 
-    const visibleCount =
-      Math.min(
-        items.length,
-        radarVisibleLimit
-      );
-
-    items
-      .slice(
-        0,
-        visibleCount
-      )
-      .forEach(
-        item => {
-          box.appendChild(
-            radarBuildTenderCard(
-              item
-            )
-          );
-        }
-      );
-
+    items.slice(pageStart, pageStart + radarPageSize).forEach(item => {
+      box.appendChild(radarBuildTenderCard(item));
+    });
   }
 
-  const moreBtn =
-    document.getElementById(
-      "radarMoreBtn"
-    );
-
-  const shownCount =
-    Math.min(
-      items.length,
-      radarVisibleLimit
-    );
-
-  if (moreBtn) {
-
-    if (shownCount < items.length) {
-
-      const remaining =
-        items.length -
-        shownCount;
-
-      moreBtn.style.display =
-        "inline-block";
-
-      moreBtn.textContent =
-        "Показать ещё (" +
-        remaining +
-        ")";
-
-    } else {
-
-      moreBtn.style.display =
-        "none";
-
-    }
-
-  }
+  radarRenderPagination(items.length);
 
   const workFilterLabels = {
     all: "",
@@ -3897,7 +3894,7 @@ function radarApplyFilters(resetLimit) {
   note.textContent =
     "Фильтр: " + (periodLabels[radarPeriod] || "Все сроки") +
     ". Найдено по фильтрам: " + items.length +
-    ". Показано: " + shownCount +
+    ". Показано: " + (items.length ? (pageStart + 1) : 0) + "–" + (pageStart + shownCount) +
     " из " + items.length +
     (workFilterLabels[radarWorkFilter] || "") +
     ". Всего актуальных: " + radarTenderItems.length + "." +
