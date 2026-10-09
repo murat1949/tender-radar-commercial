@@ -1837,6 +1837,7 @@
         </div>
 
         <p class="radar-period-help"><strong>Фильтр по сроку подачи заявок:</strong> здесь отображаются тендеры, у которых приём заявок заканчивается сегодня, в ближайшие 3 или 7 дней. Время — Казахстан (UTC+5).</p>
+        <div class="radar-results-note" id="radarKzClock" aria-live="off">Время Казахстана: —</div>
         <div class="radar-periods">
           <button class="radar-filter-btn active" data-radar-period="all" onclick="radarSetPeriod('all')">Все</button>
           <button class="radar-filter-btn" data-radar-period="today" onclick="radarSetPeriod('today')">Сегодня</button>
@@ -2617,6 +2618,42 @@ let radarExpiredHidden = 0;
 let radarVisibleLimit = 6;
 const radarPageSize = 6;
 
+// Время для сроков и фильтров всегда сравнивается как UTC timestamp.
+// Отдельно показываем часы Казахстана, независимо от настроек Windows.
+function radarUpdateKazakhstanClock() {
+  const el = document.getElementById("radarKzClock");
+  if (!el) return;
+  const nowKz = new Date(Date.now() + 5 * 60 * 60 * 1000);
+  const pad = n => String(n).padStart(2, "0");
+  el.textContent = "Сейчас в Казахстане (UTC+5): " +
+    pad(nowKz.getUTCDate()) + "." + pad(nowKz.getUTCMonth() + 1) + "." +
+    nowKz.getUTCFullYear() + ", " + pad(nowKz.getUTCHours()) + ":" +
+    pad(nowKz.getUTCMinutes()) + ". Сроки в карточках указаны в этом же времени.";
+}
+
+// Каждую минуту удаляем из текущего списка истекшие сроки без F5.
+// Не трогаем данные пользователя, статусы и Telegram.
+function radarRefreshExpiredTenders() {
+  radarUpdateKazakhstanClock();
+  if (!radarTenderItems.length) return;
+  const nowMs = Date.now();
+  const before = radarTenderItems.length;
+  radarTenderItems = radarTenderItems.filter(item =>
+    item.deadlineMs === null || !Number.isFinite(item.deadlineMs) || item.deadlineMs > nowMs
+  );
+  const removed = before - radarTenderItems.length;
+  if (removed) {
+    radarExpiredHidden += removed;
+    radarUpdateKpis();
+    radarApplyFilters(false);
+    const newCount = document.getElementById("newCount");
+    if (newCount) newCount.textContent = radarTenderItems.length;
+  }
+}
+setInterval(radarRefreshExpiredTenders, 60 * 1000);
+radarUpdateKazakhstanClock();
+
+
 function radarDaysLeft(deadlineMs) {
 
   if (!deadlineMs || Number.isNaN(deadlineMs)) {
@@ -2870,12 +2907,11 @@ function radarUpdateKpis() {
 }
 
 function radarMatchesPeriod(item) {
-  if (radarPeriod === "all") return true;
-
   const deadlineMs = item.deadlineMs;
-  if (deadlineMs === null || !Number.isFinite(deadlineMs)) return false;
   const nowMs = Date.now();
-  if (deadlineMs < nowMs) return false;
+  if (deadlineMs !== null && Number.isFinite(deadlineMs) && deadlineMs <= nowMs) return false;
+  if (radarPeriod === "all") return true;
+  if (deadlineMs === null || !Number.isFinite(deadlineMs)) return false;
 
   // "Сегодня" — до конца текущего календарного дня Казахстана (UTC+5),
   // а не скользящие 24 часа от момента просмотра.
@@ -6116,7 +6152,7 @@ async function openCabinet(user) {
 
           if (
             deadlineMs !== null &&
-            deadlineMs < nowMs
+            deadlineMs <= nowMs
           ) {
             radarExpiredHidden += 1;
             return;
