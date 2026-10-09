@@ -1836,7 +1836,7 @@
           </div>
         </div>
 
-        <p class="radar-period-help"><strong>Фильтр по сроку подачи заявок:</strong> здесь отображаются тендеры, у которых приём заявок заканчивается сегодня, в ближайшие 3 или 7 дней. Время — Казахстан (UTC+5).</p>
+        <p class="radar-period-help"><strong>Фильтр по сроку подачи заявок:</strong> здесь отображаются тендеры, у которых приём заявок заканчивается сегодня, в ближайшие 3 или 7 дней. Отображаемое время — UTC+6 (как на вашем компьютере и телефоне).</p>
         <div class="radar-results-note" id="radarKzClock" aria-live="off">Время Казахстана: —</div>
         <div class="radar-periods">
           <button class="radar-filter-btn active" data-radar-period="all" onclick="radarSetPeriod('all')">Все</button>
@@ -2619,13 +2619,13 @@ let radarVisibleLimit = 6;
 const radarPageSize = 6;
 
 // Время для сроков и фильтров всегда сравнивается как UTC timestamp.
-// Отдельно показываем часы Казахстана, независимо от настроек Windows.
+// Показываем время UTC+6 для согласования с часами пользователя; UTC timestamps не меняем.
 function radarUpdateKazakhstanClock() {
   const el = document.getElementById("radarKzClock");
   if (!el) return;
-  const nowKz = new Date(Date.now() + 5 * 60 * 60 * 1000);
+  const nowKz = new Date(Date.now() + 6 * 60 * 60 * 1000);
   const pad = n => String(n).padStart(2, "0");
-  el.textContent = "Сейчас в Казахстане (UTC+5): " +
+  el.textContent = "Время радара (UTC+6): " +
     pad(nowKz.getUTCDate()) + "." + pad(nowKz.getUTCMonth() + 1) + "." +
     nowKz.getUTCFullYear() + ", " + pad(nowKz.getUTCHours()) + ":" +
     pad(nowKz.getUTCMinutes()) + ". Сроки в карточках указаны в этом же времени.";
@@ -2913,10 +2913,10 @@ function radarMatchesPeriod(item) {
   if (radarPeriod === "all") return true;
   if (deadlineMs === null || !Number.isFinite(deadlineMs)) return false;
 
-  // "Сегодня" — до конца текущего календарного дня Казахстана (UTC+5),
+  // "Сегодня" — до конца календарного дня в отображаемом времени UTC+6,
   // а не скользящие 24 часа от момента просмотра.
   if (radarPeriod === "today") {
-    const kzOffsetMs = 5 * 60 * 60 * 1000;
+    const kzOffsetMs = 6 * 60 * 60 * 1000;
     const todayKz = new Date(nowMs + kzOffsetMs);
     const tomorrowStartUtc = Date.UTC(
       todayKz.getUTCFullYear(),
@@ -3994,13 +3994,12 @@ function formatGoszakupDateTime(value) {
     return "—";
   }
 
-  // Госзакуп хранит/показывает официальное время Казахстана UTC+5.
-  // Не используем часовой пояс Windows, чтобы старые настройки ПК
-  // не добавляли лишний час.
+  // Срок Госзакуп отображаем в UTC+6, согласованно с часами радара.
+  // Исходный UTC timestamp и проверку истечения срока не меняем.
   const kz =
     new Date(
       d.getTime() +
-      5 * 60 * 60 * 1000
+      6 * 60 * 60 * 1000
     );
 
   const pad =
