@@ -373,11 +373,14 @@
 
     .radar-kpis {
       display: grid;
-      grid-template-columns: repeat(4, minmax(0,1fr));
+      grid-template-columns: repeat(5, minmax(0,1fr));
       gap: 12px;
       margin-bottom: 16px;
     }
 
+    .radar-kpi[role="button"] { cursor: pointer; transition: border-color .15s, box-shadow .15s; }
+    .radar-kpi[role="button"]:hover, .radar-kpi[role="button"]:focus-visible { border-color: #60a5fa; box-shadow: 0 0 0 2px #bfdbfe; outline: none; }
+    .radar-kpi[role="button"].selected { border-color: #155e9a; background: #eff6ff; }
     .radar-kpi {
       background: white;
       border: 1px solid #dbeafe;
@@ -1815,22 +1818,23 @@
       <div class="radar-body">
 
         <div class="radar-kpis">
-          <div class="radar-kpi">
+          <div class="radar-kpi" role="button" tabindex="0" data-kpi-period="all" onclick="radarKpiClick('all')" onkeydown="radarKpiKey(event,'all')" title="Показать все актуальные тендеры">
             <div class="radar-kpi-label">Актуальных</div>
             <div class="radar-kpi-value" id="radarActiveCount">0</div>
           </div>
-
-          <div class="radar-kpi">
+          <div class="radar-kpi" role="button" tabindex="0" data-kpi-period="48h" onclick="radarKpiClick('48h')" onkeydown="radarKpiKey(event,'48h')" title="Показать срочные тендеры до 48 часов">
             <div class="radar-kpi-label">Срочные ≤ 48 ч</div>
             <div class="radar-kpi-value" id="radarUrgentCount">0</div>
           </div>
-
-          <div class="radar-kpi">
+          <div class="radar-kpi" role="button" tabindex="0" data-kpi-period="3d" onclick="radarKpiClick('3d')" onkeydown="radarKpiKey(event,'3d')" title="Показать тендеры до 3 дней">
+            <div class="radar-kpi-label">До 3 дней</div>
+            <div class="radar-kpi-value" id="radarThreeDayCount">0</div>
+          </div>
+          <div class="radar-kpi" role="button" tabindex="0" data-kpi-period="7d" onclick="radarKpiClick('7d')" onkeydown="radarKpiKey(event,'7d')" title="Показать тендеры до 7 дней">
             <div class="radar-kpi-label">До 7 дней</div>
             <div class="radar-kpi-value" id="radarWeekCount">0</div>
           </div>
-
-          <div class="radar-kpi">
+          <div class="radar-kpi" role="button" tabindex="0" data-kpi-period="amount" onclick="radarKpiClick('amount')" onkeydown="radarKpiKey(event,'amount')" title="Показать все тендеры по убыванию суммы">
             <div class="radar-kpi-label">Общая сумма</div>
             <div class="radar-kpi-value" id="radarTotalAmount">0 ₸</div>
           </div>
@@ -2699,7 +2703,33 @@ function radarUrgencyInfo(deadlineMs) {
 
 }
 
+function radarKpiClick(period) {
+  if (period === "amount") {
+    const sort = document.getElementById("radarSort");
+    if (sort) sort.value = "amount_desc";
+    radarSetPeriod("all");
+  } else {
+    radarSetPeriod(period);
+  }
+  document.querySelectorAll("[data-kpi-period]").forEach(card => {
+    const chosen = card.getAttribute("data-kpi-period") === period;
+    card.classList.toggle("selected", chosen);
+    card.setAttribute("aria-pressed", chosen ? "true" : "false");
+  });
+}
+
+function radarKpiKey(event, period) {
+  if (event.key === "Enter" || event.key === " ") {
+    event.preventDefault();
+    radarKpiClick(period);
+  }
+}
+
 function radarSetPeriod(period) {
+  document.querySelectorAll("[data-kpi-period]").forEach(card => {
+    card.classList.remove("selected");
+    card.setAttribute("aria-pressed", "false");
+  });
 
   radarPeriod =
     period || "all";
@@ -2832,6 +2862,11 @@ function radarUpdateKpis() {
       }
     ).length;
 
+  const threeDays = radarTenderItems.filter(item => {
+    const days = radarDaysLeft(item.deadlineMs);
+    return days !== null && days >= 0 && days <= 3;
+  }).length;
+
   const week =
     radarTenderItems.filter(
       item => {
@@ -2868,6 +2903,8 @@ function radarUpdateKpis() {
       "radarUrgentCount"
     );
 
+  const threeDaysEl = document.getElementById("radarThreeDayCount");
+
   const weekEl =
     document.getElementById(
       "radarWeekCount"
@@ -2887,6 +2924,8 @@ function radarUpdateKpis() {
     urgentEl.textContent =
       urgent;
   }
+
+  if (threeDaysEl) threeDaysEl.textContent = threeDays;
 
   if (weekEl) {
     weekEl.textContent =
@@ -2927,6 +2966,7 @@ function radarMatchesPeriod(item) {
   }
 
   const days = (deadlineMs - nowMs) / (24 * 60 * 60 * 1000);
+  if (radarPeriod === "48h") return days <= 2;
   if (radarPeriod === "3d") return days <= 3;
   if (radarPeriod === "7d") return days <= 7;
   return true;
