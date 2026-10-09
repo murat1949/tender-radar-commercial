@@ -420,6 +420,13 @@
       font-size: 14px;
     }
 
+    .radar-period-help {
+      color: #475569;
+      font-size: 13px;
+      line-height: 1.5;
+      margin: 12px 0 6px;
+    }
+
     .radar-periods {
       display: flex;
       gap: 8px;
@@ -1829,11 +1836,12 @@
           </div>
         </div>
 
+        <p class="radar-period-help"><strong>Фильтр по сроку подачи заявок:</strong> здесь отображаются тендеры, у которых приём заявок заканчивается сегодня, в ближайшие 3 или 7 дней. Время — Казахстан (UTC+5).</p>
         <div class="radar-periods">
           <button class="radar-filter-btn active" data-radar-period="all" onclick="radarSetPeriod('all')">Все</button>
           <button class="radar-filter-btn" data-radar-period="today" onclick="radarSetPeriod('today')">Сегодня</button>
-          <button class="radar-filter-btn" data-radar-period="3d" onclick="radarSetPeriod('3d')">≤ 3 дней</button>
-          <button class="radar-filter-btn" data-radar-period="7d" onclick="radarSetPeriod('7d')">≤ 7 дней</button>
+          <button class="radar-filter-btn" data-radar-period="3d" onclick="radarSetPeriod('3d')">До 3 дней</button>
+          <button class="radar-filter-btn" data-radar-period="7d" onclick="radarSetPeriod('7d')">До 7 дней</button>
         </div>
 
         <div class="radar-workqueue">
@@ -2862,36 +2870,31 @@ function radarUpdateKpis() {
 }
 
 function radarMatchesPeriod(item) {
+  if (radarPeriod === "all") return true;
 
-  if (radarPeriod === "all") {
-    return true;
-  }
+  const deadlineMs = item.deadlineMs;
+  if (deadlineMs === null || !Number.isFinite(deadlineMs)) return false;
+  const nowMs = Date.now();
+  if (deadlineMs < nowMs) return false;
 
-  const days =
-    radarDaysLeft(
-      item.deadlineMs
-    );
-
-  if (days === null || days < 0) {
-    return false;
-  }
-
+  // "Сегодня" — до конца текущего календарного дня Казахстана (UTC+5),
+  // а не скользящие 24 часа от момента просмотра.
   if (radarPeriod === "today") {
-    return days <= 1;
+    const kzOffsetMs = 5 * 60 * 60 * 1000;
+    const todayKz = new Date(nowMs + kzOffsetMs);
+    const tomorrowStartUtc = Date.UTC(
+      todayKz.getUTCFullYear(),
+      todayKz.getUTCMonth(),
+      todayKz.getUTCDate() + 1
+    ) - kzOffsetMs;
+    return deadlineMs < tomorrowStartUtc;
   }
 
-  if (radarPeriod === "3d") {
-    return days <= 3;
-  }
-
-  if (radarPeriod === "7d") {
-    return days <= 7;
-  }
-
+  const days = (deadlineMs - nowMs) / (24 * 60 * 60 * 1000);
+  if (radarPeriod === "3d") return days <= 3;
+  if (radarPeriod === "7d") return days <= 7;
   return true;
-
 }
-
 
 const tenderStatusLabels = {
   new: "Новый",
@@ -3808,14 +3811,20 @@ function radarApplyFilters(resetLimit) {
     rejected: " · очередь: Не подходит"
   };
 
+  const periodLabels = {
+    all: "Все сроки",
+    today: "Срок подачи сегодня (время Казахстана)",
+    "3d": "Срок подачи в ближайшие 3 дня",
+    "7d": "Срок подачи в ближайшие 7 дней"
+  };
+
   note.textContent =
-    "Показано: " +
-    shownCount +
-    " из " +
-    radarTenderItems.length +
-    " актуальных" +
+    "Фильтр: " + (periodLabels[radarPeriod] || "Все сроки") +
+    ". Найдено по фильтрам: " + items.length +
+    ". Показано: " + shownCount +
+    " из " + items.length +
     (workFilterLabels[radarWorkFilter] || "") +
-    "." +
+    ". Всего актуальных: " + radarTenderItems.length + "." +
     (
       radarExpiredHidden > 0
         ? " Просроченные скрыты: " +
