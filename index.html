@@ -1836,7 +1836,7 @@
           </div>
         </div>
 
-        <p class="radar-period-help"><strong>Фильтр по сроку подачи заявок:</strong> здесь отображаются тендеры, у которых приём заявок заканчивается сегодня, в ближайшие 3 или 7 дней. Отображаемое время — UTC+6 (как на вашем компьютере и телефоне).</p>
+        <p class="radar-period-help"><strong>Фильтр по сроку подачи заявок:</strong> здесь отображаются тендеры, у которых приём заявок заканчивается сегодня, в ближайшие 3 или 7 дней. Часы радара — UTC+6; сроки Госзакуп отображаются по времени официального портала.</p>
         <div class="radar-results-note" id="radarKzClock" aria-live="off">Время Казахстана: —</div>
         <div class="radar-periods">
           <button class="radar-filter-btn active" data-radar-period="all" onclick="radarSetPeriod('all')">Все</button>
@@ -2628,7 +2628,7 @@ function radarUpdateKazakhstanClock() {
   el.textContent = "Время радара (UTC+6): " +
     pad(nowKz.getUTCDate()) + "." + pad(nowKz.getUTCMonth() + 1) + "." +
     nowKz.getUTCFullYear() + ", " + pad(nowKz.getUTCHours()) + ":" +
-    pad(nowKz.getUTCMinutes()) + ". Сроки в карточках указаны в этом же времени.";
+    pad(nowKz.getUTCMinutes()) + ". Сроки Госзакуп показаны по времени официального портала.";
 }
 
 // Каждую минуту удаляем из текущего списка истекшие сроки без F5.
@@ -3994,12 +3994,13 @@ function formatGoszakupDateTime(value) {
     return "—";
   }
 
-  // Срок Госзакуп отображаем в UTC+6, согласованно с часами радара.
-  // Исходный UTC timestamp и проверку истечения срока не меняем.
+  // Коррекция отображения Госзакуп по сверке с официальным порталом:
+  // сохранённый expires_at опережает срок на портале на один час.
+  // Показываем исходный срок портала (UTC+5), без лишнего часа.
   const kz =
     new Date(
       d.getTime() +
-      6 * 60 * 60 * 1000
+      5 * 60 * 60 * 1000
     );
 
   const pad =
@@ -6144,8 +6145,12 @@ async function openCabinet(user) {
                 parsed
               )
             ) {
-              deadlineMs =
-                parsed;
+              // Госзакуп: сверка объявления 17742300-1 показала,
+              // что сохранённый срок на час позже срока портала.
+              // Исправляем и сравнение просрочки, не только текст карточки.
+              deadlineMs = tender.source_code === "goszakup"
+                ? parsed - 60 * 60 * 1000
+                : parsed;
             }
           }
 
